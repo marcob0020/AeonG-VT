@@ -114,7 +114,7 @@ You can also test AeonG performance according to your needs. We guide you with f
 
 
 ## AeonG Implementation
-AeonG is an extension of Memgraph. Details of our concept can be found in our [paper](https://arxiv.org/pdf/2304.12212v2/). You can also refer to Memgraph's [internal documentation](https://memgraph.notion.site/Memgraph-Internals-12b69132d67a417898972927d6870bd2) to better understand our code. We made the following major changes to support temporal features.
+AeonG is an extension of Memgraph. Details of our concept can be found in our [paper](https://arxiv.org/abs/2304.12212). You can also refer to Memgraph's [internal documentation](https://memgraph.notion.site/Memgraph-Internals-12b69132d67a417898972927d6870bd2) to better understand our code. We made the following major changes to support temporal features.
 
 * Storage Engine:
   * Timestamps: Import timestamps into [Vertex](/src/storage/v2/vertex.hpp), [Edge](/src/storage/v2/edge.hpp), and [Delta](/src/storage/v2/delta.hpp) structures.
