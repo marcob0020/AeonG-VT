@@ -39,7 +39,7 @@ DEFINE_bool(use_ssl, false, "Set to true to connect with SSL to the server.");
 DEFINE_uint64(num_workers, 1,
               "Number of workers that should be used to concurrently execute "
               "the supplied queries.");
-DEFINE_uint64(max_retries, 50, "Maximum number of retries for each query.");
+DEFINE_uint64(max_retries, 10, "Maximum number of retries for each query.");
 DEFINE_bool(queries_json, false,
             "Set to true to load all queries as as single JSON encoded list. Each item "
             "in the list should contain another list whose first element is the query "
@@ -48,6 +48,105 @@ DEFINE_bool(queries_json, false,
 
 DEFINE_string(input, "", "Input file. By default stdin is used.");
 DEFINE_string(output, "", "Output file. By default stdout is used.");
+std::string bolt_value_to_string(const communication::bolt::Value& v);
+
+std::string list_to_string(const std::vector<communication::bolt::Value>& v){
+  bool f = true;
+  std::string r ;
+
+  r = "[";
+  for (auto& x: v){
+    if (!f)
+      r = r + "," + bolt_value_to_string(x);
+    else
+      r = r + bolt_value_to_string(x);
+
+    f = false;
+  }
+  r = r + "]";
+
+  return r;
+}
+
+std::string bolt_value_to_string(const communication::bolt::Value& v){
+  std::string r;
+
+  std::stringstream ss;
+  bool ssu = false;
+  bool f = true;
+
+  using Type = communication::bolt::Value::Type;
+
+  switch (v.type()){
+    case Type::Null:
+      r = "NULL";
+      break;
+    case Type::Bool:
+      r = v.ValueBool() ? "true" : "false";
+      break;
+    case Type::Int:
+      ss << v.ValueInt();
+      ssu = true;
+      break;
+    case Type::Double:
+      ss << v.ValueDouble();
+      ssu = true;
+      break;
+    case Type::String:
+      r = v.ValueString();
+      break;
+    case Type::List:
+      r = list_to_string(v.ValueList());
+      break;
+    case Type::Map:
+      r = "{";
+      for (auto [key,value]: v.ValueMap()){
+        if (!f)
+          r = r + "," + key + ":" + bolt_value_to_string(value);
+        else
+          r = r + key + ":" + bolt_value_to_string(value);
+
+        f = false;
+      }
+      r = r + "}";
+      break;
+    case Type::Vertex:
+      {
+        auto& vx = v.ValueVertex();
+
+        r = "Vertex([";
+        for (auto& x: vx.labels){
+          if (!f)
+            r = r + "," + x;
+          else
+            r = r + x;
+
+          f = false;
+        }
+
+        r = r + "],{";
+        f = true;
+
+        for (auto [key,value]: vx.properties){
+          if (!f)
+            r = r + "," + key + ":" + bolt_value_to_string(value);
+          else
+            r = r + key + ":" + bolt_value_to_string(value);
+
+          f = false;
+        }
+        r = r + "})";
+      }
+      break;
+    default:
+      r = "Unhandled";
+  }
+
+  if (ssu)
+    ss >> r;
+
+  return r;
+}
 
 std::pair<std::map<std::string, communication::bolt::Value>, uint64_t> ExecuteNTimesTillSuccess(
     communication::bolt::Client *client, const std::string &query,
@@ -55,6 +154,20 @@ std::pair<std::map<std::string, communication::bolt::Value>, uint64_t> ExecuteNT
   for (uint64_t i = 0; i < max_attempts; ++i) {
     try {
       auto ret = client->Execute(query, params);
+
+      std::cout<<"Size: " << ret.records.size() << "\n";
+
+      std::cout<<"Fields: " << ret.fields.size() << "\n";
+      for (int j = 0; j!= ret.fields.size();j++){
+        std::cout<<ret.fields[j]<<" - ";
+      }
+      std::cout<<"\nResult: \n";
+      for (auto j : ret.records){
+        for (auto k: j){
+          std::cout<<bolt_value_to_string(k)<<" - ";
+        }
+        std::cout<<"\n";
+      }
       return {std::move(ret.metadata), i};
     } catch (const utils::BasicException &e) {
       if (i == max_attempts - 1) {
