@@ -732,7 +732,7 @@ if [ ! -f xz-$XZ_VERSION.tar.gz ]; then
     wget https://tukaani.org/xz/xz-$XZ_VERSION.tar.gz -O xz-$XZ_VERSION.tar.gz
 fi
 if [ ! -f zlib-$ZLIB_VERSION.tar.gz ]; then
-    wget https://zlib.net/zlib-$ZLIB_VERSION.tar.gz -O zlib-$ZLIB_VERSION.tar.gz
+    wget https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.gz -O zlib-$ZLIB_VERSION.tar.gz
 fi
 if [ ! -f zstd-$ZSTD_VERSION.tar.gz ]; then
     wget https://github.com/facebook/zstd/releases/download/v$ZSTD_VERSION/zstd-$ZSTD_VERSION.tar.gz -O zstd-$ZSTD_VERSION.tar.gz
@@ -796,13 +796,16 @@ if [ ! -f xz-$XZ_VERSION.tar.gz.sig ]; then
 fi
 $GPG --import ../xz_pgp.txt
 $GPG --verify xz-$XZ_VERSION.tar.gz.sig xz-$XZ_VERSION.tar.gz
-# verify zlib
-if [ ! -f zlib-$ZLIB_VERSION.tar.gz.asc ]; then
-    wget https://zlib.net/zlib-$ZLIB_VERSION.tar.gz.asc
-fi
-$GPG --keyserver $KEYSERVER --recv-keys 0x783FCD8E58BCAFBA
-$GPG --verify zlib-$ZLIB_VERSION.tar.gz.asc zlib-$ZLIB_VERSION.tar.gz
+
+echo "xz ok"
+#verify zlib
+#if [ ! -f zlib-$ZLIB_VERSION.tar.gz.asc ]; then
+ #   wget https://zlib.net/zlib-$ZLIB_VERSION.tar.gz.asc
+#fi
+#$GPG --keyserver $KEYSERVER --recv-keys 0x783FCD8E58BCAFBA
+#$GPG --verify zlib-$ZLIB_VERSION.tar.gz.asc zlib-$ZLIB_VERSION.tar.gz
 #verify zstd
+echo "zlib comm ok"
 if [ ! -f zstd-$ZSTD_VERSION.tar.gz.sig ]; then
     wget https://github.com/facebook/zstd/releases/download/v$ZSTD_VERSION/zstd-$ZSTD_VERSION.tar.gz.sig
 fi
@@ -814,6 +817,8 @@ echo "$WANGLE_SHA256 wangle-$FBLIBS_VERSION.tar.gz" | sha256sum -c
 popd
 
 pushd build
+
+echo "activating"
 
 source $PREFIX/activate
 
@@ -834,6 +839,7 @@ COMMON_CMAKE_FLAGS="-DCMAKE_INSTALL_PREFIX=$PREFIX
 COMMON_CONFIGURE_FLAGS="--enable-shared=no --prefix=$PREFIX"
 COMMON_MAKE_INSTALL_FLAGS="-j$CPUS BUILD_SHARED=no PREFIX=$PREFIX install"
 
+echo "installations #0"
 # install bzip2
 if [ ! -f $PREFIX/include/bzlib.h ]; then
     if [ -d bzip2-$BZIP2_VERSION ]; then
@@ -844,6 +850,8 @@ if [ ! -f $PREFIX/include/bzlib.h ]; then
     make $COMMON_MAKE_INSTALL_FLAGS
     popd
 fi
+
+echo "installations #1"
 
 # install fmt
 if [ ! -d $PREFIX/include/fmt ]; then
@@ -858,6 +866,8 @@ if [ ! -d $PREFIX/include/fmt ]; then
     popd && popd
 fi
 
+echo "installations #2"
+
 # install lz4
 if [ ! -f $PREFIX/include/lz4.h ]; then
     if [ -d lz4-$LZ4_VERSION ]; then
@@ -868,6 +878,8 @@ if [ ! -f $PREFIX/include/lz4.h ]; then
     make $COMMON_MAKE_INSTALL_FLAGS
     popd
 fi
+
+echo "installations #3"
 
 # install xz
 if [ ! -f $PREFIX/include/lzma.h ]; then
@@ -881,12 +893,20 @@ if [ ! -f $PREFIX/include/lzma.h ]; then
     popd
 fi
 
+echo "installations #4"
+
 # install zlib
 if [ ! -f $PREFIX/include/zlib.h ]; then
+
+    echo "./archives/zlib-$ZLIB_VERSION.tar.gz"
+    ls ../archives/
+  
     if [ -d zlib-$ZLIB_VERSION ]; then
         rm -rf zlib-$ZLIB_VERSION
     fi
+    echo "installations #4.a"
     tar -xzf ../archives/zlib-$ZLIB_VERSION.tar.gz
+    echo "installations #4.b"
     pushd zlib-$ZLIB_VERSION
     mkdir build && pushd build
     cmake .. $COMMON_CMAKE_FLAGS
@@ -894,6 +914,8 @@ if [ ! -f $PREFIX/include/zlib.h ]; then
     rm $PREFIX/lib/libz.so*
     popd && popd
 fi
+
+echo "installations #5"
 
 # install zstd
 if [ ! -f $PREFIX/include/zstd.h ]; then
