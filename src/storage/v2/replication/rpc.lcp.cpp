@@ -1,9 +1,9 @@
 // -*- buffer-read-only: t; -*-
 // vim: readonly
 // DO NOT EDIT! Generated using LCP from
-// '/home/hjm/vldb/memgraph/src/storage/v2/replication/rpc.lcp'
+// '/home/marcob0020/Desktop/AeonG/AeonG-VT/src/storage/v2/replication/rpc.lcp'
 
-#include "/home/hjm/vldb/memgraph/src/storage/v2/replication/rpc.hpp"
+#include "/home/marcob0020/Desktop/AeonG/AeonG-VT/src/storage/v2/replication/rpc.hpp"
 
 namespace storage {
 

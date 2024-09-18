@@ -1,9 +1,9 @@
 // -*- buffer-read-only: t; -*-
 // vim: readonly
 // DO NOT EDIT! Generated using LCP from
-// '/home/hjm/vldb/memgraph/src/query/plan/operator.lcp'
+// '/home/marcob0020/Desktop/AeonG/AeonG-VT/src/query/plan/operator.lcp'
 
-#include "/home/hjm/vldb/memgraph/src/query/plan/operator.hpp"
+#include "/home/marcob0020/Desktop/AeonG/AeonG-VT/src/query/plan/operator.hpp"
 
 const utils::TypeInfo query::plan::LogicalOperator::kType{
     0xCF6E3316FE845113ULL, "LogicalOperator", nullptr};
