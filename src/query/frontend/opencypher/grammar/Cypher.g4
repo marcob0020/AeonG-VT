@@ -76,11 +76,11 @@ clause : cypherMatch
 
 cypherMatch : OPTIONAL? MATCH pattern where? tt? vt?;
 
-tt : TT AS as_literal=literal
-   | TT FROM from_literal=literal TO to_literal=literal;
+tt : FOR TT AS OF as_literal=literal
+   | FOR TT FROM from_literal=literal TO to_literal=literal;
 
-vt : VT AS as_vliteral=literal
-   | VT From from_vliteral=literal TO to_vliteral=literal;
+vt : FOR VT AS OF as_vliteral=literal
+   | FOR VT FROM from_vliteral=literal TO to_vliteral=literal;
 
 unwind : UNWIND expression AS variable ;
 
@@ -386,6 +386,7 @@ cypherKeyword : ALL
               | UNION
               | UNIQUE
               | UNWIND
+              | VT
               | WHEN
               | WHERE
               | WITH
