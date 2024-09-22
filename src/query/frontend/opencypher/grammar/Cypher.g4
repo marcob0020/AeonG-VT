@@ -79,8 +79,8 @@ cypherMatch : OPTIONAL? MATCH pattern where? tt? vt?;
 tt : FOR TT AS OF as_literal=literal
    | FOR TT FROM from_literal=literal TO to_literal=literal;
 
-vt : FOR VT AS OF as_vliteral=literal
-   | FOR VT FROM from_vliteral=literal TO to_vliteral=literal;
+vt : FOR VT AS OF as_vliteral=vt_literal
+   | FOR VT FROM from_vliteral=vt_literal TO to_vliteral=vt_literal;
 
 unwind : UNWIND expression AS variable ;
 
@@ -255,6 +255,9 @@ literal : numberLiteral
         | mapLiteral
         | listLiteral
         ;
+
+vt_literal : StringLiteral
+           | integerLiteral;
 
 booleanLiteral : TRUE
                | FALSE
