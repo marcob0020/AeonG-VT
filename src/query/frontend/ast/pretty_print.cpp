@@ -66,6 +66,7 @@ class ExpressionPrettyPrinter : public ExpressionVisitor<void> {
   void Visit(None &op) override;
   void Visit(Identifier &op) override;
   void Visit(PrimitiveLiteral &op) override;
+  void Visit(VtLiteral &op) override;
   void Visit(PropertyLookup &op) override;
   void Visit(ParameterLookup &op) override;
   void Visit(NamedExpression &op) override;
@@ -283,6 +284,8 @@ void ExpressionPrettyPrinter::Visit(None &op) {
 void ExpressionPrettyPrinter::Visit(Identifier &op) { PrintOperator(out_, "Identifier", op.name_); }
 
 void ExpressionPrettyPrinter::Visit(PrimitiveLiteral &op) { PrintObject(out_, op.value_); }
+
+void ExpressionPrettyPrinter::Visit(VtLiteral &op) { PrintObject(out_, op.value_); }
 
 void ExpressionPrettyPrinter::Visit(PropertyLookup &op) {
   PrintOperator(out_, "PropertyLookup", op.expression_, op.property_.name);

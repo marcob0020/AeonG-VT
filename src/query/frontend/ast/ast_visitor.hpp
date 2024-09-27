@@ -44,6 +44,7 @@ class EdgeAtom;
 class PrimitiveLiteral;
 class ListLiteral;
 class MapLiteral;
+class VtLiteral;
 class OrOperator;
 class XorOperator;
 class AndOperator;
@@ -69,6 +70,7 @@ class IfOperator;
 class Delete;
 class Where;
 class Tt;
+class Vt;
 class SetProperty;
 class SetProperties;
 class SetLabels;
@@ -101,11 +103,11 @@ using TreeCompositeVisitor = ::utils::CompositeVisitor<
     SubtractionOperator, MultiplicationOperator, DivisionOperator, ModOperator, NotEqualOperator, EqualOperator,
     LessOperator, GreaterOperator, LessEqualOperator, GreaterEqualOperator, InListOperator, SubscriptOperator,
     ListSlicingOperator, IfOperator, UnaryPlusOperator, UnaryMinusOperator, IsNullOperator, ListLiteral, MapLiteral,
-    PropertyLookup, LabelsTest, Aggregation, Function, Reduce, Coalesce, Extract, All, Single, Any, None, CallProcedure,
-    Create, Match, Return, With, Pattern, NodeAtom, EdgeAtom, Delete, Where, Tt, SetProperty, SetProperties, SetLabels,
-    RemoveProperty, RemoveLabels, Merge, Unwind, RegexMatch, LoadCsv>;
+    VtLiteral, PropertyLookup, LabelsTest, Aggregation, Function, Reduce, Coalesce, Extract, All, Single, Any, None,
+    CallProcedure, Create, Match, Return, With, Pattern, NodeAtom, EdgeAtom, Delete, Where, Tt, Vt, SetProperty,
+    SetProperties, SetLabels, RemoveProperty, RemoveLabels, Merge, Unwind, RegexMatch, LoadCsv>;
 
-using TreeLeafVisitor = ::utils::LeafVisitor<Identifier, PrimitiveLiteral, ParameterLookup>;
+using TreeLeafVisitor = ::utils::LeafVisitor<Identifier, PrimitiveLiteral, VtLiteral, ParameterLookup>;
 
 class HierarchicalTreeVisitor : public TreeCompositeVisitor, public TreeLeafVisitor {
  public:
@@ -123,7 +125,7 @@ class ExpressionVisitor
           LessOperator, GreaterOperator, LessEqualOperator, GreaterEqualOperator, InListOperator, SubscriptOperator,
           ListSlicingOperator, IfOperator, UnaryPlusOperator, UnaryMinusOperator, IsNullOperator, ListLiteral,
           MapLiteral, PropertyLookup, LabelsTest, Aggregation, Function, Reduce, Coalesce, Extract, All, Single, Any,
-          None, ParameterLookup, Identifier, PrimitiveLiteral, RegexMatch> {};
+          None, ParameterLookup, Identifier, PrimitiveLiteral, RegexMatch, VtLiteral> {};
 
 template <class TResult>
 class QueryVisitor : public ::utils::Visitor<TResult, CypherQuery, ExplainQuery, ProfileQuery, IndexQuery, AuthQuery,

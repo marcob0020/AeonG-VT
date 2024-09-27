@@ -378,6 +378,38 @@ cpp<#
   (:clone :ignore-other-base-classes t)
   (:type-info :ignore-other-base-classes t))
 
+(lcp:define-class vt (tree "::utils::Visitable<HierarchicalTreeVisitor>")
+  (
+   (vt-left "Expression *" :initval "nullptr" :scope :public
+                 :slk-save #'slk-save-ast-pointer
+                 :slk-load (slk-load-ast-pointer "Expression"))
+   (vt-right "Expression *" :initval "nullptr" :scope :public
+                 :slk-save #'slk-save-ast-pointer
+                 :slk-load (slk-load-ast-pointer "Expression")))
+  (:public
+    #>cpp
+    using ::utils::Visitable<HierarchicalTreeVisitor>::Accept;
+
+    Vt() = default;
+
+    bool Accept(HierarchicalTreeVisitor &visitor) override {
+      return visitor.PostVisit(*this);
+    }
+
+    cpp<#)
+  (:protected
+    #>cpp
+    Vt(query::Expression *vt_left, query::Expression *vt_right)
+        : vt_left_(vt_left), vt_right_(vt_right) {}
+    cpp<#)
+  (:private
+    #>cpp
+    friend class AstStorage;
+    cpp<#)
+  (:serialize (:slk :ignore-other-base-classes t))
+  (:clone :ignore-other-base-classes t)
+  (:type-info :ignore-other-base-classes t))
+
 (lcp:define-class binary-operator (expression)
   ((expression1 "Expression *" :initval "nullptr" :scope :public
                 :slk-save #'slk-save-ast-pointer
@@ -1817,7 +1849,11 @@ cpp<#
    (tt "Tt *" :initval "nullptr" :scope :public
           :slk-save #'slk-save-ast-pointer
           :slk-load (slk-load-ast-pointer "Tt"))
-   )
+
+   (vt "Vt *" :initval "nullptr" :scope :public
+             :slk-save #'slk-save-ast-pointer
+             :slk-load (slk-load-ast-pointer "Vt"))
+  )
   (:public
     #>cpp
     Match() = default;
@@ -1836,6 +1872,9 @@ cpp<#
         }
         if (cont && tt_) {
           tt_->Accept(visitor);
+        }
+        if (cont && vt_) {
+          vt_->Accept(visitor);
         }
       }
       return visitor.PostVisit(*this);

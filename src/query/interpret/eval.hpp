@@ -437,6 +437,12 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
     return TypedValue(literal.value_, ctx_->memory);
   }
 
+  TypedValue Visit(VtLiteral &literal) override {
+    // TODO: no need to evaluate constants, we can write it to frame in one
+    // of the previous phases.
+    return TypedValue(literal.value_, ctx_->memory);
+  }
+
   TypedValue Visit(ListLiteral &literal) override {
     TypedValue::TVector result(ctx_->memory);
     result.reserve(literal.elements_.size());
