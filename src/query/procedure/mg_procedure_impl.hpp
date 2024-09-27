@@ -74,6 +74,7 @@ struct mgp_value {
   mgp_value(mgp_date *, utils::MemoryResource *) noexcept;
   mgp_value(mgp_local_time *, utils::MemoryResource *) noexcept;
   mgp_value(mgp_local_date_time *, utils::MemoryResource *) noexcept;
+  mgp_value(mgp_vt_date_time *, utils::MemoryResource *) noexcept;
   mgp_value(mgp_duration *, utils::MemoryResource *) noexcept;
 
   /// Construct by copying query::TypedValue using utils::MemoryResource.
@@ -133,6 +134,7 @@ struct mgp_value {
     mgp_local_time *local_time_v;
     mgp_local_date_time *local_date_time_v;
     mgp_duration *duration_v;
+    mgp_vt_date_time *vt_date_time_v;
   };
 };
 
@@ -282,6 +284,58 @@ struct mgp_local_date_time {
 
   utils::MemoryResource *memory;
   utils::LocalDateTime local_date_time;
+};
+
+inline utils::VTDateTime CreateVtDateTimeFromString(const std::string_view string) {
+  const auto &[date_parameters, local_time_parameters] = utils::ParseVTDateTimeParameters(string);
+  return utils::VTDateTime{date_parameters, local_time_parameters};
+}
+
+struct mgp_vt_date_time {
+  /// Allocator type so that STL containers are aware that we need one.
+  /// We don't actually need this, but it simplifies the C API, because we store
+  /// the allocator which was used to allocate `this`.
+  using allocator_type = utils::Allocator<mgp_vt_date_time>;
+
+  // Hopefully utils::VTDateTime copy constructor remains noexcept, so that we can
+  // have everything noexcept here.
+  static_assert(std::is_nothrow_copy_constructible_v<utils::VTDateTime>);
+
+  mgp_vt_date_time(const utils::VTDateTime &vt_date_time, utils::MemoryResource *memory) noexcept
+      : memory(memory), vt_date_time(vt_date_time) {}
+
+  mgp_vt_date_time(const std::string_view string, utils::MemoryResource *memory) noexcept
+      : memory(memory), vt_date_time(CreateVtDateTimeFromString(string)) {}
+
+  mgp_vt_date_time(const mgp_vt_date_time_parameters *parameters, utils::MemoryResource *memory) noexcept
+      : memory(memory),
+        vt_date_time(MapDateParameters(parameters->date_parameters),
+                        MapLocalTimeParameters(parameters->local_time_parameters)) {}
+
+  mgp_vt_date_time(const int64_t microseconds, utils::MemoryResource *memory) noexcept
+      : memory(memory), vt_date_time(microseconds) {}
+
+  mgp_vt_date_time(const mgp_vt_date_time &other, utils::MemoryResource *memory) noexcept
+      : memory(memory), vt_date_time(other.vt_date_time) {}
+
+  mgp_vt_date_time(mgp_vt_date_time &&other, utils::MemoryResource *memory) noexcept
+      : memory(memory), vt_date_time(other.vt_date_time) {}
+
+  mgp_vt_date_time(mgp_vt_date_time &&other) noexcept
+      : memory(other.memory), vt_date_time(other.vt_date_time) {}
+
+  /// Copy construction without utils::MemoryResource is not allowed.
+  mgp_vt_date_time(const mgp_vt_date_time &) = delete;
+
+  mgp_vt_date_time &operator=(const mgp_vt_date_time &) = delete;
+  mgp_vt_date_time &operator=(mgp_vt_date_time &&) = delete;
+
+  ~mgp_vt_date_time() = default;
+
+  utils::MemoryResource *GetMemoryResource() const noexcept { return memory; }
+
+  utils::MemoryResource *memory;
+  utils::VTDateTime vt_date_time;
 };
 
 inline utils::DurationParameters MapDurationParameters(const mgp_duration_parameters *parameters) {

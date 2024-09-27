@@ -1180,6 +1180,7 @@ DEFINE_PY_MGP_MODULE_TYPE(Date, date);
 DEFINE_PY_MGP_MODULE_TYPE(LocalTime, local_time);
 DEFINE_PY_MGP_MODULE_TYPE(LocalDateTime, local_date_time);
 DEFINE_PY_MGP_MODULE_TYPE(Duration, duration);
+DEFINE_PY_MGP_MODULE_TYPE(VtDateTime, vt_date_time);
 
 static PyMethodDef PyMgpModuleMethods[] = {
     {"type_nullable", PyMgpModuleTypeNullable, METH_O,
@@ -1202,6 +1203,7 @@ static PyMethodDef PyMgpModuleMethods[] = {
     {"type_local_time", PyMgpModuleTypeLocalTime, METH_NOARGS, "Get the type representing a LocalTime."},
     {"type_local_date_time", PyMgpModuleTypeLocalDateTime, METH_NOARGS, "Get the type representing a LocalDateTime."},
     {"type_duration", PyMgpModuleTypeDuration, METH_NOARGS, "Get the type representing a Duration."},
+    {"type_vt_date_time", PyMgpModuleTypeVtDateTime, METH_NOARGS, "Get the type representing a VTDateTime."},
     {nullptr},
 };
 
@@ -2192,6 +2194,14 @@ py::Object MgpValueToPyObject(const mgp_value &value, PyGraph *py_graph) {
       const auto &duration = value.duration_v->duration;
       py::Object py_duration(PyDelta_FromDSU(0, 0, duration.microseconds));
       return py_duration;
+    }
+    case MGP_VALUE_TYPE_VT_DATE_TIME: {
+      const auto &local_time = static_cast<utils::LocalDateTime>(value.vt_date_time_v->vt_date_time).local_time;
+      const auto &date = static_cast<utils::LocalDateTime>(value.vt_date_time_v->vt_date_time).date;
+      py::Object py_vt_date_time(PyDateTime_FromDateAndTime(date.year, date.month, date.day, local_time.hour,
+                                                               local_time.minute, local_time.second,
+                                                               local_time.millisecond * 1000 + local_time.microsecond));
+      return py_vt_date_time;
     }
   }
 }
