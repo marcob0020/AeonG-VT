@@ -96,6 +96,11 @@ class ReturnBodyContext : public HierarchicalTreeVisitor {
     return true;
   }
 
+  bool Visit(VtLiteral &) override {
+    has_aggregation_.emplace_back(false);
+    return true;
+  }
+
  private:
   template <typename TLiteral, typename TIteratorToExpression>
   void PostVisitCollectionLiteral(TLiteral &literal, TIteratorToExpression iterator_to_expression) {

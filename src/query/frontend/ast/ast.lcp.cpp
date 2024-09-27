@@ -26,6 +26,9 @@ const utils::TypeInfo query::Where::kType{0x39448BD33A0696DAULL, "Where",
 const utils::TypeInfo query::Tt::kType{0xFFD39EFC73DCC623ULL, "Tt",
                                        &query::Tree::kType};
 
+const utils::TypeInfo query::Vt::kType{0xFFCCB2FC73D6C971ULL, "Vt",
+                                       &query::Tree::kType};
+
 const utils::TypeInfo query::BinaryOperator::kType{
     0x9233B629DA1AFE3EULL, "BinaryOperator", &query::Expression::kType};
 

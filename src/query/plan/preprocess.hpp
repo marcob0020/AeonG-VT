@@ -75,6 +75,7 @@ class UsedSymbolsCollector : public HierarchicalTreeVisitor {
   }
 
   bool Visit(PrimitiveLiteral &) override { return true; }
+  bool Visit(VtLiteral &) override { return true; }
   bool Visit(ParameterLookup &) override { return true; }
 
   std::unordered_set<Symbol> symbols_;
