@@ -200,6 +200,13 @@ class BaseEncoder {
     WriteInt(local_date_time.SubSecondsAsNanoseconds());
   }
 
+  void WriteVtDateTime(const utils::VTDateTime &vt_date_time) {
+    WriteRAW(utils::UnderlyingCast(Marker::TinyStruct2));
+    WriteRAW(utils::UnderlyingCast(Signature::VtDateTime));
+    WriteInt(vt_date_time.get_microseconds()/1000000);
+    WriteInt((vt_date_time.get_microseconds()%1000000)*1000);
+  }
+
   void WriteDuration(const utils::Duration &duration) {
     WriteRAW(utils::UnderlyingCast(Marker::TinyStruct4));
     WriteRAW(utils::UnderlyingCast(Signature::Duration));
@@ -259,6 +266,9 @@ class BaseEncoder {
       case Value::Type::Duration:
         WriteDuration(value.ValueDuration());
         break;
+      case Value::Type::VtDateTime:
+        WriteVtDateTime(value.ValueVtDateTime());
+      break;
     }
   }
 

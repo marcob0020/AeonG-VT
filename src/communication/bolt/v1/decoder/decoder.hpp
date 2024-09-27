@@ -105,6 +105,8 @@ class Decoder {
         switch (static_cast<Signature>(signature)) {
           case Signature::LocalDateTime:
             return ReadLocalDateTime(data);
+          case Signature::VtDateTime:
+            return ReadVtDateTime(data);
           default:
             return false;
         }
@@ -588,6 +590,38 @@ class Decoder {
     const auto nanos = chrono::nanoseconds(values[3]);
     const auto micros = months + days + secs + chrono::duration_cast<chrono::microseconds>(nanos);
     *data = Value(utils::Duration(micros.count()));
+    return true;
+  }
+
+  bool ReadVtDateTime(Value *data) {
+    Value secs;
+    if (!ReadValue(&secs, Value::Type::Int)) {
+      return false;
+    }
+
+    Value nanos;
+    if (!ReadValue(&nanos, Value::Type::Int)) {
+      return false;
+    }
+    namespace chrono = std::chrono;
+    const auto chrono_seconds = chrono::seconds(secs.ValueInt());
+    const auto sys_seconds = chrono::sys_seconds(chrono_seconds);
+    const auto sys_days = chrono::time_point_cast<chrono::days>(sys_seconds);
+    const auto date = chrono::year_month_day(sys_days);
+
+    const auto ldt = utils::Date(
+        {static_cast<int>(date.year()), static_cast<unsigned>(date.month()), static_cast<unsigned>(date.day())});
+
+    auto secs_leftover = chrono::seconds(sys_seconds - sys_days);
+    const auto h = utils::GetAndSubtractDuration<chrono::hours>(secs_leftover);
+    const auto m = utils::GetAndSubtractDuration<chrono::minutes>(secs_leftover);
+    const auto s = secs_leftover.count();
+    auto nanos_leftover = chrono::nanoseconds(nanos.ValueInt());
+    const auto ml = utils::GetAndSubtractDuration<chrono::milliseconds>(nanos_leftover);
+    const auto mi = chrono::duration_cast<chrono::microseconds>(nanos_leftover).count();
+    const auto params = utils::LocalTimeParameters{h, m, s, ml, mi};
+    const auto tm = utils::LocalTime(params);
+    *data = utils::VTDateTime(ldt, tm);
     return true;
   }
 };

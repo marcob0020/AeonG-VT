@@ -15,6 +15,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <utils/vt_temporal.hpp>
 
 #include "utils/cast.hpp"
 #include "utils/exceptions.hpp"
@@ -147,7 +148,8 @@ class Value {
     Date,
     LocalTime,
     LocalDateTime,
-    Duration
+    Duration,
+    VtDateTime
   };
 
   // constructors for primitive types
@@ -173,6 +175,7 @@ class Value {
     new (&local_date_time_v) utils::LocalDateTime(date_time);
   }
   Value(const utils::Duration &dur) : type_(Type::Duration) { new (&duration_v) utils::Duration(dur); }
+  Value(const utils::VTDateTime &vt_date_time) : type_(Type::VtDateTime) { new (&vt_date_time_v) utils::VTDateTime(vt_date_time); }
   // move constructors for non-primitive values
   Value(std::string &&value) noexcept : type_(Type::String) { new (&string_v) std::string(std::move(value)); }
   Value(std::vector<Value> &&value) noexcept : type_(Type::List) { new (&list_v) std::vector<Value>(std::move(value)); }
@@ -220,7 +223,8 @@ class Value {
   DECL_GETTER_BY_REFERENCE(LocalTime, utils::LocalTime)
   DECL_GETTER_BY_REFERENCE(LocalDateTime, utils::LocalDateTime)
   DECL_GETTER_BY_REFERENCE(Duration, utils::Duration)
-#undef DECL_GETTER_BY_REFERNCE
+  DECL_GETTER_BY_REFERENCE(VtDateTime, utils::VTDateTime)
+#undef DECL_GETTER_BY_REFERENCE
 
 #define TYPE_CHECKER(type) \
   bool Is##type() const { return type_ == Type::type; }
@@ -239,6 +243,7 @@ class Value {
   TYPE_CHECKER(LocalTime)
   TYPE_CHECKER(LocalDateTime)
   TYPE_CHECKER(Duration)
+  TYPE_CHECKER(VtDateTime)
 #undef TYPE_CHECKER
 
   friend std::ostream &operator<<(std::ostream &os, const Value &value);
@@ -262,6 +267,7 @@ class Value {
     utils::LocalTime local_time_v;
     utils::LocalDateTime local_date_time_v;
     utils::Duration duration_v;
+    utils::VTDateTime vt_date_time_v;
   };
 };
 /**

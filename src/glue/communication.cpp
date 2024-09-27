@@ -60,6 +60,8 @@ query::TypedValue ToTypedValue(const Value &value) {
       return query::TypedValue(value.ValueLocalDateTime());
     case Value::Type::Duration:
       return query::TypedValue(value.ValueDuration());
+    case Value::Type::VtDateTime:
+      return query::TypedValue(value.ValueVtDateTime());
   }
 }
 
@@ -173,6 +175,8 @@ storage::Result<Value> ToBoltValue(const query::TypedValue &value, const storage
       return Value(value.ValueLocalDateTime());
     case query::TypedValue::Type::Duration:
       return Value(value.ValueDuration());
+    case query::TypedValue::Type::VtDateTime:
+      return Value(value.ValueVtDateTime());
   }
 }
 
@@ -287,6 +291,9 @@ storage::PropertyValue ToPropertyValue(const Value &value) {
     case Value::Type::Duration:
       return storage::PropertyValue(
           storage::TemporalData(storage::TemporalType::Duration, value.ValueDuration().microseconds));
+    case Value::Type::VtDateTime:
+      return storage::PropertyValue(
+          storage::TemporalData(storage::TemporalType::VtDateTime, value.ValueVtDateTime().get_microseconds()));
   }
 }
 
@@ -331,6 +338,8 @@ Value ToBoltValue(const storage::PropertyValue &value) {
           return Value(utils::LocalDateTime(type.microseconds));
         case storage::TemporalType::Duration:
           return Value(utils::Duration(type.microseconds));
+        case storage::TemporalType::VtDateTime:
+          return Value(utils::VTDateTime(type.microseconds));
       }
   }
 }
