@@ -287,7 +287,8 @@ mgp_value_type FromTypedValueType(query::TypedValue::Type type) {
       return MGP_VALUE_TYPE_LOCAL_DATE_TIME;
     case query::TypedValue::Type::Duration:
       return MGP_VALUE_TYPE_DURATION;
-
+    case query::TypedValue::Type::VtDateTime:
+      return MGP_VALUE_TYPE_VT_DATE_TIME;
     case query::TypedValue::Type::HistoryVertex://hjm begin
       return MGP_VALUE_TYPE_HISTORY_VERTEX;
     case query::TypedValue::Type::HistoryEdge:
@@ -354,6 +355,8 @@ query::TypedValue ToTypedValue(const mgp_value &val, utils::MemoryResource *memo
       return query::TypedValue(val.local_date_time_v->local_date_time, memory);
     case MGP_VALUE_TYPE_DURATION:
       return query::TypedValue(val.duration_v->duration, memory);
+    case MGP_VALUE_TYPE_VT_DATE_TIME:
+      return query::TypedValue(val.vt_date_time_v->vt_date_time, memory);
   }
 }
 
@@ -414,6 +417,11 @@ mgp_value::mgp_value(mgp_local_date_time *val, utils::MemoryResource *m) noexcep
 
 mgp_value::mgp_value(mgp_duration *val, utils::MemoryResource *m) noexcept
     : type(MGP_VALUE_TYPE_DURATION), memory(m), duration_v(val) {
+  MG_ASSERT(val->GetMemoryResource() == m, "Unable to take ownership of a pointer with different allocator.");
+}
+
+mgp_value::mgp_value(mgp_vt_date_time *val, utils::MemoryResource *m) noexcept
+    : type(MGP_VALUE_TYPE_VT_DATE_TIME), memory(m), vt_date_time_v(val) {
   MG_ASSERT(val->GetMemoryResource() == m, "Unable to take ownership of a pointer with different allocator.");
 }
 
@@ -521,6 +529,11 @@ mgp_value::mgp_value(const query::TypedValue &tv, mgp_graph *graph, utils::Memor
       duration_v = allocator.new_object<mgp_duration>(tv.ValueDuration());
       break;
     }
+    case MGP_VALUE_TYPE_VT_DATE_TIME: {
+      utils::Allocator<mgp_vt_date_time> allocator(m);
+      vt_date_time_v = allocator.new_object<mgp_vt_date_time>(tv.ValueVtDateTime());
+      break;
+    }
   }
 }
 
@@ -597,6 +610,11 @@ mgp_value::mgp_value(const storage::PropertyValue &pv, utils::MemoryResource *m)
           duration_v = NewRawMgpObject<mgp_duration>(m, temporal_data.microseconds);
           break;
         }
+        case storage::TemporalType::VtDateTime: {
+          type = MGP_VALUE_TYPE_VT_DATE_TIME;
+          vt_date_time_v = NewRawMgpObject<mgp_vt_date_time>(m, temporal_data.microseconds);
+          break;
+        }
       }
     }
   }
@@ -671,6 +689,10 @@ mgp_value::mgp_value(const mgp_value &other, utils::MemoryResource *m) : type(ot
       duration_v = NewRawMgpObject<mgp_duration>(m, *other.duration_v);
       break;
     }
+    case MGP_VALUE_TYPE_VT_DATE_TIME: {
+      vt_date_time_v = NewRawMgpObject<mgp_vt_date_time>(m, *other.vt_date_time_v);
+      break;
+    }
   }
 }
 
@@ -724,6 +746,9 @@ void DeleteValueMember(mgp_value *value) noexcept {
     case MGP_VALUE_TYPE_DURATION:
       allocator.delete_object(value->duration_v);
       return;
+    case MGP_VALUE_TYPE_VT_DATE_TIME:
+      allocator.delete_object(value->vt_date_time_v);
+    return;
   }
 }
 
@@ -860,6 +885,15 @@ mgp_value::mgp_value(mgp_value &&other, utils::MemoryResource *m) : type(other.t
         duration_v = NewRawMgpObject<mgp_duration>(m, *other.duration_v);
       }
       break;
+    case MGP_VALUE_TYPE_VT_DATE_TIME:
+      static_assert(std::is_pointer_v<decltype(vt_date_time_v)>, "Expected to move vt_date_time_v by copying pointers.");
+      if (*other.GetMemoryResource() == *m) {
+        vt_date_time_v = other.vt_date_time_v;
+        other.type = MGP_VALUE_TYPE_NULL;
+      } else {
+        vt_date_time_v = NewRawMgpObject<mgp_vt_date_time>(m, *other.vt_date_time_v);
+      }
+      break;
   }
   DeleteValueMember(&other);
   other.type = MGP_VALUE_TYPE_NULL;
@@ -907,6 +941,7 @@ DEFINE_MGP_VALUE_MAKE(date)
 DEFINE_MGP_VALUE_MAKE(local_time)
 DEFINE_MGP_VALUE_MAKE(local_date_time)
 DEFINE_MGP_VALUE_MAKE(duration)
+DEFINE_MGP_VALUE_MAKE(vt_date_time)
 
 namespace {
 mgp_value_type MgpValueGetType(const mgp_value &val) noexcept { return val.type; }
@@ -940,6 +975,7 @@ DEFINE_MGP_VALUE_IS(date, DATE)
 DEFINE_MGP_VALUE_IS(local_time, LOCAL_TIME)
 DEFINE_MGP_VALUE_IS(local_date_time, LOCAL_DATE_TIME)
 DEFINE_MGP_VALUE_IS(duration, DURATION)
+DEFINE_MGP_VALUE_IS(vt_date_time, VT_DATE_TIME)
 
 mgp_error mgp_value_get_bool(mgp_value *val, int *result) {
   *result = val->bool_v ? 1 : 0;
@@ -975,6 +1011,7 @@ DEFINE_MGP_VALUE_GET(date)
 DEFINE_MGP_VALUE_GET(local_time)
 DEFINE_MGP_VALUE_GET(local_date_time)
 DEFINE_MGP_VALUE_GET(duration)
+DEFINE_MGP_VALUE_GET(vt_date_time)
 
 mgp_error mgp_list_make_empty(size_t capacity, mgp_memory *memory, mgp_list **result) {
   return WrapExceptions(
@@ -1625,6 +1662,9 @@ storage::PropertyValue ToPropertyValue(const mgp_value &value) {
     case MGP_VALUE_TYPE_DURATION:
       return storage::PropertyValue{
           storage::TemporalData{storage::TemporalType::Duration, value.duration_v->duration.microseconds}};
+    case MGP_VALUE_TYPE_VT_DATE_TIME:
+      return storage::PropertyValue{storage::TemporalData{
+        storage::TemporalType::VtDateTime, value.vt_date_time_v->vt_date_time.get_microseconds()}};
     case MGP_VALUE_TYPE_VERTEX:
       throw ValueConversionException{"A vertex is not a valid property value! "};
     case MGP_VALUE_TYPE_EDGE:
@@ -2397,6 +2437,7 @@ DEFINE_MGP_TYPE_GETTER(Date, date);
 DEFINE_MGP_TYPE_GETTER(LocalTime, local_time);
 DEFINE_MGP_TYPE_GETTER(LocalDateTime, local_date_time);
 DEFINE_MGP_TYPE_GETTER(Duration, duration);
+DEFINE_MGP_TYPE_GETTER(VTDateTime, vt_date_time);
 
 mgp_error mgp_type_list(mgp_type *type, mgp_type **result) {
   return WrapExceptions(
@@ -2501,6 +2542,7 @@ mgp_error mgp_proc_add_opt_arg(mgp_proc *proc, const char *name, mgp_type *type,
       case MGP_VALUE_TYPE_DATE:
       case MGP_VALUE_TYPE_LOCAL_TIME:
       case MGP_VALUE_TYPE_LOCAL_DATE_TIME:
+      case MGP_VALUE_TYPE_VT_DATE_TIME:
       case MGP_VALUE_TYPE_DURATION:
         break;
     }
@@ -2601,6 +2643,8 @@ std::ostream &PrintValue(const TypedValue &value, std::ostream *stream) {
       return (*stream) << value.ValueLocalDateTime();
     case TypedValue::Type::Duration:
       return (*stream) << value.ValueDuration();
+    case TypedValue::Type::VtDateTime:
+      return (*stream) << value.ValueVtDateTime();
     case TypedValue::Type::Vertex:
     case TypedValue::Type::Edge:
     //hjm begin

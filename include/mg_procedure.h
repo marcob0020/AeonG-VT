@@ -150,6 +150,9 @@ struct mgp_local_time;
 /// Local date-time stored in Memgraph.
 struct mgp_local_date_time;
 
+/// VT date-time stored in Memgraph.
+struct mgp_vt_date_time;
+
 /// Duration stored in Memgraph.
 struct mgp_duration;
 
@@ -170,6 +173,7 @@ enum mgp_value_type {
   MGP_VALUE_TYPE_LOCAL_TIME,
   MGP_VALUE_TYPE_LOCAL_DATE_TIME,
   MGP_VALUE_TYPE_DURATION,
+  MGP_VALUE_TYPE_VT_DATE_TIME,
 
   MGP_VALUE_TYPE_HISTORY_VERTEX,//hjm begin
   MGP_VALUE_TYPE_HISTORY_EDGE,//hjm end
@@ -276,6 +280,14 @@ enum mgp_error mgp_value_make_local_date_time(struct mgp_local_date_time *val, s
 /// must not call mgp_duration_destroy on the given duration.
 /// MGP_ERROR_UNABLE_TO_ALLOCATE is returned if unable to allocate a mgp_value.
 enum mgp_error mgp_value_make_duration(struct mgp_duration *val, struct mgp_value **result);
+
+/// Create a mgp_value storing a mgp_vt_date_time.
+/// You need to free the instance through mgp_value_destroy. The ownership of
+/// the VT date-time is transferred to the created mgp_value and destroying the mgp_value will
+/// destroy the mgp_vt_date_time. Therefore, if a mgp_value is successfully created you
+/// must not call mgp_vt_date_time_destroy on the given local date-time.
+/// MGP_ERROR_UNABLE_TO_ALLOCATE is returned if unable to allocate a mgp_value.
+enum mgp_error mgp_value_make_vt_date_time(struct mgp_vt_date_time *val, struct mgp_value **result);
 
 /// Get the type of the value contained in mgp_value.
 /// Current implementation always returns without errors.
@@ -397,6 +409,11 @@ enum mgp_error mgp_value_get_local_time(struct mgp_value *val, struct mgp_local_
 /// Result is undefined if mgp_value does not contain the expected type.
 /// Current implementation always returns without errors.
 enum mgp_error mgp_value_get_local_date_time(struct mgp_value *val, struct mgp_local_date_time **result);
+
+  /// Get the contained local date-time.
+  /// Result is undefined if mgp_value does not contain the expected type.
+  /// Current implementation always returns without errors.
+  enum mgp_error mgp_value_get_vt_date_time(struct mgp_value *val, struct mgp_vt_date_time **result);
 
 /// Get the contained duration.
 /// Result is undefined if mgp_value does not contain the expected type.
@@ -1174,6 +1191,91 @@ enum mgp_error mgp_duration_sub(struct mgp_duration *first, struct mgp_duration 
                                 struct mgp_duration **result);
 ///@}
 
+struct mgp_vt_date_time_parameters {
+  struct mgp_date_parameters *date_parameters;
+  struct mgp_local_time_parameters *local_time_parameters;
+};
+
+/// Create a vt date-time from a string following the ISO 8601 format.
+/// Resulting vt date-time must be freed with mgp_vt_date_time_destroy.
+/// Return MGP_ERROR_INVALID_ARGUMENT if the string cannot be parsed correctly.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_from_string(const char *string, struct mgp_memory *memory,
+                                               struct mgp_vt_date_time **vt_date_time);
+
+/// Create a vt date-time from mgp_vt_date_time_parameters.
+/// Resulting vt date-time must be freed with mgp_vt_date_time_destroy.
+/// Return MGP_ERROR_INVALID_ARGUMENT if the parameters cannot be parsed correctly.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_from_parameters(struct mgp_vt_date_time_parameters *parameters,
+                                                   struct mgp_memory *memory,
+                                                   struct mgp_vt_date_time **vt_date_time);
+
+/// Copy a mgp_vt_date_time.
+/// Resulting pointer must be freed with mgp_vt_date_time_destroy.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_copy(struct mgp_vt_date_time *vt_date_time, struct mgp_memory *memory,
+                                        struct mgp_vt_date_time **result);
+
+/// Free the memory used by a mgp_vt_date_time.
+void mgp_vt_date_time_destroy(struct mgp_vt_date_time *vt_date_time);
+
+/// Result is non-zero if given vt date-times are equal, otherwise 0.
+enum mgp_error mgp_vt_date_time_equal(struct mgp_vt_date_time *first, struct mgp_vt_date_time *second,
+                                         int *result);
+
+/// Get the year property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_year(struct mgp_vt_date_time *vt_date_time, int *year);
+
+/// Get the month property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_month(struct mgp_vt_date_time *vt_date_time, int *month);
+
+/// Get the day property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_day(struct mgp_vt_date_time *vt_date_time, int *day);
+
+/// Get the hour property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_hour(struct mgp_vt_date_time *vt_date_time, int *hour);
+
+/// Get the minute property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_minute(struct mgp_vt_date_time *vt_date_time, int *minute);
+
+/// Get the second property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_second(struct mgp_vt_date_time *vt_date_time, int *second);
+
+/// Get the milisecond property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_millisecond(struct mgp_vt_date_time *vt_date_time, int *millisecond);
+
+/// Get the microsecond property of the vt date-time.
+enum mgp_error mgp_vt_date_time_get_microsecond(struct mgp_vt_date_time *vt_date_time, int *microsecond);
+
+/// Get the vt date-time as microseconds from Unix epoch.
+enum mgp_error mgp_vt_date_time_timestamp(struct mgp_vt_date_time *vt_date_time, int64_t *timestamp);
+
+/// Get the vt date-time representing current date and time.
+/// Resulting vt date-time must be freed with mgp_vt_date_time_destroy.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_now(struct mgp_memory *memory, struct mgp_vt_date_time **vt_date_time);
+
+/// Add a duration to the vt date-time.
+/// Resulting vt date-time must be freed with mgp_vt_date_time_destroy.
+/// Return MGP_ERROR_INVALID_ARGUMENT if the operation results in an invalid vt date-time.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_add_duration(struct mgp_vt_date_time *vt_date_time, struct mgp_duration *dur,
+                                                struct mgp_memory *memory, struct mgp_vt_date_time **result);
+
+/// Subtract a duration from the vt date-time.
+/// Resulting vt date-time must be freed with mgp_vt_date_time_destroy.
+/// Return MGP_ERROR_INVALID_ARGUMENT if the operation results in an invalid vt date-time.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_sub_duration(struct mgp_vt_date_time *vt_date_time, struct mgp_duration *dur,
+                                                struct mgp_memory *memory, struct mgp_vt_date_time **result);
+
+/// Get a duration between two vt date-times.
+/// Resulting duration must be freed with mgp_duration_destroy.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate a mgp_vt_date_time.
+enum mgp_error mgp_vt_date_time_diff(struct mgp_vt_date_time *first, struct mgp_vt_date_time *second,
+                                        struct mgp_memory *memory, struct mgp_duration **result);
+
 /// Advance the iterator to the next vertex and return it.
 /// The previous mgp_vertex obtained through mgp_vertices_iterator_get
 /// will be invalidated, and you must not use its value.
@@ -1272,6 +1374,10 @@ enum mgp_error mgp_type_local_date_time(struct mgp_type **result);
 /// Get the type representing a duration.
 /// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate the new type.
 enum mgp_error mgp_type_duration(struct mgp_type **result);
+
+/// Get the type representing a VT date-time.
+/// Return MGP_ERROR_UNABLE_TO_ALLOCATE if unable to allocate the new type.
+enum mgp_error mgp_type_vt_date_time(struct mgp_type **result);
 
 /// Build a type representing either a `null` value or a value of given `type`.
 ///

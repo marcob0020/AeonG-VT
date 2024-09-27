@@ -100,6 +100,7 @@ struct Date {};
 struct LocalTime {};
 struct LocalDateTime {};
 struct Duration {};
+struct VTDateTime {};
 
 template <class ArgType>
 bool ArgIsType(const TypedValue &arg) {
@@ -139,6 +140,8 @@ bool ArgIsType(const TypedValue &arg) {
     return arg.IsLocalDateTime();
   } else if constexpr (std::is_same_v<ArgType, Duration>) {
     return arg.IsDuration();
+  } else if constexpr (std::is_same_v<ArgType, VTDateTime>) {
+    return arg.IsVtDateTime();
   } else if constexpr (std::is_same_v<ArgType, void>) {
     return true;
   } else {
@@ -189,6 +192,8 @@ constexpr const char *ArgTypeName() {
     return "LocalDateTime";
   } else if constexpr (std::is_same_v<ArgType, Duration>) {
     return "Duration";
+  } else if constexpr (std::is_same_v<ArgType, VTDateTime>) {
+    return "VTDateTime";
   } else {
     static_assert(std::is_same_v<ArgType, Null>, "Unknown ArgType");
   }
@@ -584,6 +589,8 @@ TypedValue ValueType(const TypedValue *args, int64_t nargs, const FunctionContex
       return TypedValue("LOCAL_DATE_TIME", ctx.memory);
     case TypedValue::Type::Duration:
       return TypedValue("DURATION", ctx.memory);
+    case TypedValue::Type::VtDateTime:
+      return TypedValue("VT_DATE_TIME", ctx.memory);
 
     case TypedValue::Type::HistoryVertex:
       return TypedValue("HistoryVertex", ctx.memory);
@@ -902,7 +909,7 @@ TypedValue ToString(const TypedValue *args, int64_t nargs, const FunctionContext
 }
 
 TypedValue Timestamp(const TypedValue *args, int64_t nargs, const FunctionContext &ctx) {
-  FType<Optional<Or<Date, LocalTime, LocalDateTime, Duration>>>("timestamp", args, nargs);
+  FType<Optional<Or<Date, LocalTime, LocalDateTime, Duration, VTDateTime>>>("timestamp", args, nargs);
   const auto &arg = *args;
   if (arg.IsDate()) {
     return TypedValue(arg.ValueDate().MicrosecondsSinceEpoch(), ctx.memory);
@@ -915,6 +922,9 @@ TypedValue Timestamp(const TypedValue *args, int64_t nargs, const FunctionContex
   }
   if (arg.IsDuration()) {
     return TypedValue(arg.ValueDuration().microseconds, ctx.memory);
+  }
+  if (arg.IsVtDateTime()) {
+    return TypedValue(arg.ValueVtDateTime().get_microseconds(), ctx.memory);
   }
   return TypedValue(ctx.timestamp, ctx.memory);
 }
@@ -1179,6 +1189,37 @@ TypedValue Duration(const TypedValue *args, int64_t nargs, const FunctionContext
   MapNumericParameters<Number>(parameter_mappings, args[0].ValueMap());
   return TypedValue(utils::Duration(duration_parameters), ctx.memory);
 }
+
+TypedValue VtDateTime(const TypedValue *args, int64_t nargs, const FunctionContext &ctx) {
+  FType<Optional<Or<String, Map>>>("vtdatetime", args, nargs);
+
+  if (nargs == 0) {
+    return TypedValue(utils::VTDateTime(ctx.timestamp), ctx.memory);
+  }
+
+  if (args[0].IsString()) {
+    const auto &[date_parameters, local_time_parameters] = ParseVTDateTimeParameters(args[0].ValueString());
+    return TypedValue(utils::VTDateTime(date_parameters, local_time_parameters), ctx.memory);
+  }
+
+  utils::DateParameters date_parameters;
+  utils::LocalTimeParameters local_time_parameters;
+  using namespace std::literals;
+  std::unordered_map parameter_mappings{
+    std::pair{"year"sv, &date_parameters.year},
+    std::pair{"month"sv, &date_parameters.month},
+    std::pair{"day"sv, &date_parameters.day},
+    std::pair{"hour"sv, &local_time_parameters.hour},
+    std::pair{"minute"sv, &local_time_parameters.minute},
+    std::pair{"second"sv, &local_time_parameters.second},
+    std::pair{"millisecond"sv, &local_time_parameters.millisecond},
+    std::pair{"microsecond"sv, &local_time_parameters.microsecond},
+};
+
+  MapNumericParameters<Integer>(parameter_mappings, args[0].ValueMap());
+  return TypedValue(utils::VTDateTime(date_parameters, local_time_parameters), ctx.memory);
+}
+
 }  // namespace
 
 std::function<TypedValue(const TypedValue *, int64_t, const FunctionContext &ctx)> NameToFunction(
@@ -1263,6 +1304,7 @@ std::function<TypedValue(const TypedValue *, int64_t, const FunctionContext &ctx
   if (function_name == "LOCALTIME") return LocalTime;
   if (function_name == "LOCALDATETIME") return LocalDateTime;
   if (function_name == "DURATION") return Duration;
+  if (function_name == "VTDATETIME") return VtDateTime;
 
   return nullptr;
 }
