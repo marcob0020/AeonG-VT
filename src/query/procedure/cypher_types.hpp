@@ -196,6 +196,15 @@ class DurationType : public CypherType {
   bool SatisfiesType(const query::TypedValue &value) const override { return value.IsDuration(); }
 };
 
+class VTDateTimeType : public CypherType {
+public:
+  std::string_view GetPresentableName() const override { return "VT_DATE_TIME"; }
+
+  bool SatisfiesType(const mgp_value &value) const override { return value.type == MGP_VALUE_TYPE_DURATION; }
+
+  bool SatisfiesType(const query::TypedValue &value) const override { return value.IsVtDateTime(); }
+};
+
 // Composite Types
 
 class ListType : public CypherType {

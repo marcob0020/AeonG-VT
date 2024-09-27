@@ -78,6 +78,11 @@ inline nlohmann::json PropertyValueToJson(const storage::PropertyValue &pv) {
             ss << ldt;
             return ss.str();
           }
+          case storage::TemporalType::VtDateTime: {
+            const auto lvt = utils::VTDateTime(ms);
+            ss << lvt;
+            return ss.str();
+          }
         }
       };
       ret = to_string(temporal_data);

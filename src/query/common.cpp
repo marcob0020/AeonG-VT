@@ -56,6 +56,9 @@ bool TypedValueCompare(const TypedValue &a, const TypedValue &b) {
     case TypedValue::Type::Duration:
       // NOLINTNEXTLINE(modernize-use-nullptr)
       return a.ValueDuration() < b.ValueDuration();
+    case TypedValue::Type::VtDateTime:
+      // NOLINTNEXTLINE(modernize-use-nullptr)
+      return a.ValueVtDateTime() < b.ValueVtDateTime();
     case TypedValue::Type::List:
     case TypedValue::Type::Map:
     case TypedValue::Type::Vertex:

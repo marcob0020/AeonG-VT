@@ -85,6 +85,7 @@ class TypedValue {
     Date,
     LocalTime,
     LocalDateTime,
+    VtDateTime,
     Duration,
     HistoryVertex,//hjm 
     HistoryEdge//hjm
@@ -175,6 +176,11 @@ class TypedValue {
   explicit TypedValue(const utils::LocalDateTime &value, utils::MemoryResource *memory = utils::NewDeleteResource())
       : memory_(memory), type_(Type::LocalDateTime) {
     local_date_time_v = value;
+  }
+
+    explicit TypedValue(const utils::VTDateTime &value, utils::MemoryResource *memory = utils::NewDeleteResource())
+      : memory_(memory), type_(Type::VtDateTime) {
+      vt_date_time_v = value;
   }
 
   explicit TypedValue(const utils::Duration &value, utils::MemoryResource *memory = utils::NewDeleteResource())
@@ -476,6 +482,7 @@ class TypedValue {
   TypedValue &operator=(const utils::LocalTime &);
   TypedValue &operator=(const utils::LocalDateTime &);
   TypedValue &operator=(const utils::Duration &);
+  TypedValue &operator=(const utils::VTDateTime &);
 
   //hjm begin
   TypedValue &operator=(const storage::HistoryEdge &);
@@ -535,6 +542,7 @@ class TypedValue {
   DECLARE_VALUE_AND_TYPE_GETTERS(utils::LocalTime, LocalTime)
   DECLARE_VALUE_AND_TYPE_GETTERS(utils::LocalDateTime, LocalDateTime)
   DECLARE_VALUE_AND_TYPE_GETTERS(utils::Duration, Duration)
+  DECLARE_VALUE_AND_TYPE_GETTERS(utils::VTDateTime, VtDateTime)
 
   //hjm begin
   DECLARE_VALUE_AND_TYPE_GETTERS(storage::HistoryEdge, HistoryEdge)
@@ -582,6 +590,7 @@ class TypedValue {
     utils::LocalTime local_time_v;
     utils::LocalDateTime local_date_time_v;
     utils::Duration duration_v;
+    utils::VTDateTime vt_date_time_v;
 
     storage::HistoryVertex history_vertex_v;//hjm 
     storage::HistoryEdge history_edge_v;//hjm
