@@ -38,13 +38,14 @@ public:
     explicit VTDateTime(const LocalDateTime &local_date_time);
 
     explicit operator LocalDateTime() const;
-    bool inline operator> (const VTDateTime &other) const;
-    bool inline operator < (const VTDateTime &other) const;
-    bool inline operator == (const VTDateTime &other) const;
-    bool inline operator != (const VTDateTime &other) const;
-    bool inline operator <= (const VTDateTime &other) const;
-    bool inline operator >= (const VTDateTime &other) const;
-    bool inline operator <=> (const VTDateTime &other) const;
+    bool operator> (const VTDateTime &other) const;
+    bool operator < (const VTDateTime &other) const;
+    bool operator == (const VTDateTime &other) const;
+    bool operator != (const VTDateTime &other) const;
+    bool operator <= (const VTDateTime &other) const;
+    bool operator >= (const VTDateTime &other) const;
+
+    auto operator<=>(const VTDateTime &) const = default;
 
     friend std::ostream &operator<<(std::ostream &os, const VTDateTime &ldt) {
         os << LocalDateTime(ldt.microseconds);
@@ -61,6 +62,10 @@ public:
 
     friend Duration operator-(const VTDateTime &lhs, const VTDateTime &rhs) {
         return Duration(lhs.microseconds) - Duration(rhs.microseconds);
+    }
+
+    int64_t get_microseconds() const {
+        return microseconds;
     }
 };
 

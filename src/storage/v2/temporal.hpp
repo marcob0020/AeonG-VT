@@ -15,10 +15,11 @@
 #include <string_view>
 
 #include "utils/temporal.hpp"
+#include "utils/vt_temporal.hpp"
 
 namespace storage {
 
-enum class TemporalType : uint8_t { Date = 0, LocalTime, LocalDateTime, Duration };
+enum class TemporalType : uint8_t { Date = 0, LocalTime, LocalDateTime, Duration, VtDateTime  };
 
 constexpr std::string_view TemporalTypeTostring(const TemporalType type) {
   switch (type) {
@@ -30,6 +31,8 @@ constexpr std::string_view TemporalTypeTostring(const TemporalType type) {
       return "LocalDateTime";
     case TemporalType::Duration:
       return "Duration";
+    case TemporalType::VtDateTime:
+      return "VtDateTime";
   }
 }
 
@@ -47,6 +50,9 @@ struct TemporalData {
         return os << "LOCALDATETIME(\"" << utils::LocalDateTime(t.microseconds) << "\")";
       case TemporalType::Duration:
         return os << "DURATION(\"" << utils::Duration(t.microseconds) << "\")";
+      case TemporalType::VtDateTime:
+        return os << "VTDATETIME\"" << utils::VTDateTime(t.microseconds) << "\"";
+
     }
   }
   TemporalType type;

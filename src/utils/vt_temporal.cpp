@@ -35,31 +35,27 @@ namespace utils {
         return LocalDateTime(this->microseconds);
     }
 
-    bool inline VTDateTime::operator>(const VTDateTime &other) const {
+    bool VTDateTime::operator>(const VTDateTime &other) const {
         return this->microseconds > other.microseconds;
     }
 
-    bool inline VTDateTime::operator<(const VTDateTime &other) const {
+    bool VTDateTime::operator<(const VTDateTime &other) const {
         return this->microseconds < other.microseconds;
     }
 
-    bool inline VTDateTime::operator==(const VTDateTime &other) const {
+    bool VTDateTime::operator==(const VTDateTime &other) const {
         return this->microseconds == other.microseconds;
     }
 
-    bool inline VTDateTime::operator!=(const VTDateTime &other) const {
+    bool VTDateTime::operator!=(const VTDateTime &other) const {
         return this->microseconds != other.microseconds;
     }
 
-    bool inline VTDateTime::operator<=(const VTDateTime &other) const {
+    bool VTDateTime::operator<=(const VTDateTime &other) const {
         return this->microseconds <= other.microseconds;
     }
 
-    bool inline VTDateTime::operator>=(const VTDateTime &other) const {
-        return this->microseconds >= other.microseconds;
-    }
-
-    bool inline VTDateTime::operator<=>(const VTDateTime &other) const {
+    bool VTDateTime::operator>=(const VTDateTime &other) const {
         return this->microseconds >= other.microseconds;
     }
 
