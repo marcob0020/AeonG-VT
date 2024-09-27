@@ -48,6 +48,7 @@ enum class Signature : uint8_t {
   Duration = 0x45,
   LocalDateTime = 0x64,
   LocalTime = 0x74,
+  VtDateTime = 0x84
 };
 
 enum class Marker : uint8_t {
