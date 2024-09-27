@@ -37,6 +37,7 @@
 #include "utils/exceptions.hpp"
 #include "utils/logging.hpp"
 #include "utils/string.hpp"
+#include "utils/vt_temporal.hpp"
 
 namespace query::frontend {
 
@@ -2063,6 +2064,36 @@ antlrcpp::Any CypherMainVisitor::visitLiteral(MemgraphCypher::LiteralContext *ct
   return visitChildren(ctx);
 }
 
+  antlrcpp::Any CypherMainVisitor::visitVtLiteral(MemgraphCypher::Vt_literalContext *ctx) {
+  if (ctx->StringLiteral() || ctx->integerLiteral() ) {
+    int token_position = ctx->getStart()->getTokenIndex();
+    auto vtDateParser = [this,token_position](const antlrcpp::Any& v) {
+      if (v.is<std::string>()) {
+        auto [vt_date, vt_time] = utils::ParseVTDateTimeParameters(v.as<std::string>());
+        const utils::VTDateTime vt (vt_date,vt_time);
+        return static_cast<Expression *>(storage_->Create<PrimitiveLiteral>(storage::TemporalData(storage::TemporalType::VtDateTime,vt.get_microseconds()),token_position));
+      }
+      const auto vt_us = v.as<int64_t>();
+      return static_cast<Expression *>(storage_->Create<PrimitiveLiteral>(storage::TemporalData(storage::TemporalType::VtDateTime,vt_us),token_position));
+    };
+
+    if (context_.is_query_cached) {
+      // Instead of generating PrimitiveLiteral, we generate a
+      // ParameterLookup, so that the AST can be cached. This allows for
+      // varying literals, which are then looked up in the parameters table
+      // (even though they are not user provided). Note, that NULL always
+      // generates a PrimitiveLiteral.
+      return static_cast<Expression *>(storage_->Create<ParameterLookup>(token_position));
+    } else if (ctx->StringLiteral()) {
+      return vtDateParser(ctx->StringLiteral()->accept(this).as<std::string>());
+    } else if (ctx->integerLiteral()) {
+      return vtDateParser(ctx->integerLiteral()->accept(this).as<int64_t>());
+    }
+    LOG_FATAL("Expected to handle all cases above");
+  }
+  return visitChildren(ctx);
+}
+
 antlrcpp::Any CypherMainVisitor::visitParenthesizedExpression(MemgraphCypher::ParenthesizedExpressionContext *ctx) {
   return static_cast<Expression *>(ctx->expression()->accept(this));
 }
@@ -2176,6 +2207,20 @@ antlrcpp::Any CypherMainVisitor::visitTt(MemgraphCypher::TtContext *ctx) {
   return tt;
 }
 //wzy edit end
+
+//marcob0020 edit
+antlrcpp::Any CypherMainVisitor::visitVt(MemgraphCypher::VtContext *ctx) {
+  auto *vt = storage_->Create<Vt>();
+  if(ctx->AS()){
+    vt->vt_left_ =ctx->as_vliteral->accept(this);// ctx->_localctx->as_literal->accept(this);
+    vt->vt_right_ =ctx->as_vliteral->accept(this);// ctx->_localctx->as_literal->accept(this);
+    return vt;
+  }
+  vt->vt_left_ = ctx->from_vliteral->accept(this);
+  vt->vt_right_ = ctx->to_vliteral->accept(this);
+  return vt;
+}
+//marcob0020 edit end
 
 antlrcpp::Any CypherMainVisitor::visitSet(MemgraphCypher::SetContext *ctx) {
   std::vector<Clause *> set_items;

@@ -756,6 +756,11 @@ class CypherMainVisitor : public antlropencypher::MemgraphCypherBaseVisitor {
    */
   antlrcpp::Any visitLiteral(MemgraphCypher::LiteralContext *ctx) override;
 
+ /**
+  * @return utils::VtDateTime*
+  */
+ antlrcpp::Any visitVtLiteral(MemgraphCypher::Vt_literalContext *ctx) override;
+
   /**
    * Convert escaped string from a query to unescaped utf8 string.
    *
@@ -794,6 +799,8 @@ class CypherMainVisitor : public antlropencypher::MemgraphCypherBaseVisitor {
   antlrcpp::Any visitWhere(MemgraphCypher::WhereContext *ctx) override;
 
   antlrcpp::Any visitTt(MemgraphCypher::TtContext *ctx) override;
+
+  antlrcpp::Any visitVt(MemgraphCypher::VtContext *ctx) override;
 
   /**
    * return vector<Clause*>

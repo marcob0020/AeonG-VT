@@ -90,6 +90,11 @@ void DumpDuration(std::ostream &os, const storage::TemporalData &value) {
   os << "DURATION(\"" << dur << "\")";
 }
 
+void DumpVtDateTime(std::ostream &os, const storage::TemporalData &value) {
+  utils::VTDateTime vtdt(value.microseconds);
+  os << "VTDATETIME(\"" << vtdt << "\")";
+}
+
 void DumpTemporalData(std::ostream &os, const storage::TemporalData &value) {
   switch (value.type) {
     case storage::TemporalType::Date: {
@@ -106,6 +111,10 @@ void DumpTemporalData(std::ostream &os, const storage::TemporalData &value) {
     }
     case storage::TemporalType::Duration: {
       DumpDuration(os, value);
+      return;
+    }
+    case storage::TemporalType::VtDateTime: {
+      DumpVtDateTime(os, value);
       return;
     }
   }
