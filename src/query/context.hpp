@@ -19,6 +19,7 @@
 #include "query/parameters.hpp"
 #include "query/plan/profile.hpp"
 #include "query/trigger.hpp"
+#include "query/temporal_filter.hpp"
 #include "utils/async_timer.hpp"
 
 namespace query {
@@ -78,6 +79,8 @@ struct ExecutionContext {
 
   std::optional<int64_t> addition;
   std::optional<int64_t> addition_right;
+
+  TemporalFilter addition_vt;
   // std::map<uint64_t,std::vector<std::tuple<storage::HistoryVertex*,uint64_t,uint64_t>>> all_vertex_;//pair gid,transaction_st vertex info 
   // std::map<int,std::vector<nlohmann::json>> fiter_history_e_datas;
 

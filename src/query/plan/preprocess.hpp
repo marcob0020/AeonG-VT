@@ -294,6 +294,7 @@ struct Matching {
   // std::pair<storage::PropertyValue,storage::PropertyValue> history_infos_;
   //PrimitiveLiteral
 
+  std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> vt_history_infos_;
   //hjm end
 };
 

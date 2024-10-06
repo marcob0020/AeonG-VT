@@ -483,6 +483,8 @@ class ScanAllCursor : public Cursor {
     SCOPED_PROFILE_OP(op_name_);
 
     if (MustAbort(context)) throw HintedAbortError();
+
+    std::cout<<context.addition_vt<<std::endl;
   
     if(context.addition){
       if(count==0){
@@ -519,6 +521,7 @@ class ScanAllCursor : public Cursor {
         }
         auto current_vertex=*vertices_it_.value();
         addHistoryVertex(current_vertex,historyContext_,history_add,context,false);
+        // std::cout <<
         ++vertices_it_.value();
       }  
     }else{

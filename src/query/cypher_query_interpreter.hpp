@@ -49,6 +49,8 @@ class LogicalPlan {
   //hjm begin
   virtual const std::optional<std::pair<int,int>> &getHistoryInfo() const =0;
   //hjm end
+
+  virtual const std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> &getVTHistoryInfo() const =0;
 };
 
 class CachedPlan {
@@ -63,6 +65,8 @@ class CachedPlan {
   //hjm begin
   const auto &getHistoryInfo() const { return plan_->getHistoryInfo(); }
   //hjm end
+
+  const auto &getVTHistoryInfo() const { return plan_->getVTHistoryInfo(); }
 
   bool IsExpired() const {
     // NOLINTNEXTLINE (modernize-use-nullptr)
@@ -130,8 +134,8 @@ class SingleNodeLogicalPlan final : public LogicalPlan {
       : root_(std::move(root)), cost_(cost), storage_(std::move(storage)), symbol_table_(symbol_table) {}
 
  SingleNodeLogicalPlan(std::unique_ptr<plan::LogicalOperator> root, double cost, AstStorage storage,
-                        const SymbolTable &symbol_table,std::optional<std::pair<int,int>> history_info)
-      : root_(std::move(root)), cost_(cost), storage_(std::move(storage)), symbol_table_(symbol_table),history_info_(history_info) {}
+                        const SymbolTable &symbol_table, const std::optional<std::pair<int,int>> &history_info, const std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> &vt_info)
+      : root_(std::move(root)), cost_(cost), storage_(std::move(storage)), symbol_table_(symbol_table),history_info_(history_info), vt_info_(vt_info) {}
 
   const plan::LogicalOperator &GetRoot() const override { return *root_; }
   double GetCost() const override { return cost_; }
@@ -142,6 +146,10 @@ class SingleNodeLogicalPlan final : public LogicalPlan {
     return history_info_;
   };
 
+  const std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> &getVTHistoryInfo() const override {
+    return vt_info_;
+  }
+
  private:
   std::unique_ptr<plan::LogicalOperator> root_;
   double cost_;
@@ -151,6 +159,8 @@ class SingleNodeLogicalPlan final : public LogicalPlan {
   //hjm begin
   std::optional<std::pair<int,int>> history_info_;
   //hjm end
+
+  std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> vt_info_;
 };
 
 std::unique_ptr<LogicalPlan> MakeLogicalPlan(AstStorage ast_storage, CypherQuery *query, const Parameters &parameters,

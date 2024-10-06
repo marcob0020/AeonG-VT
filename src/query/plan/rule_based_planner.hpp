@@ -14,6 +14,7 @@
 
 #include <optional>
 #include <variant>
+#include <query/temporal_filter.hpp>
 
 #include "gflags/gflags.h"
 
@@ -50,11 +51,12 @@ struct PlanningContext {
   std::unordered_set<Symbol> bound_symbols{};
 
   //hjm begin
-  // std::pair<Expression*,Expression*> history_info_;
   std::optional<std::pair<int,int>> history_info_;
   std::optional<std::pair<Expression*,Expression*>> history_infos_;
   // std::pair<storage::PropertyValue,storage::PropertyValue> history_infos_;
   //hjm end
+
+  std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> vt_infos_;
 };
 
 template <class TDbAccessor>
@@ -255,6 +257,7 @@ class RuleBasedPlanner {
     for (auto pattern : create.patterns_) {
       last_op = GenCreateForPattern(*pattern, std::move(last_op), symbol_table, bound_symbols);
     }
+    if(create.vt_) context_->vt_infos_=std::make_tuple(create.vt_->vt_left_, create.vt_->vt_right_,create.vt_->vt_query_type_);
     return last_op;
   }
 
@@ -392,6 +395,7 @@ class RuleBasedPlanner {
     // context_->history_info_=matching.history_info_;
 
     //hjm end
+    if(matching.vt_history_infos_) context_->vt_infos_=matching.vt_history_infos_;
 
     // Copy filters, because we will modify them as we generate Filters.
     auto filters = matching.filters;
@@ -531,6 +535,7 @@ class RuleBasedPlanner {
     std::vector<Symbol> bound_symbols(context_->bound_symbols.begin(), context_->bound_symbols.end());
 
     auto once_with_symbols = std::make_unique<Once>(bound_symbols);
+    if(merge.vt_) context_->vt_infos_=std::make_tuple(merge.vt_->vt_left_, merge.vt_->vt_right_,merge.vt_->vt_query_type_);
     auto on_match = PlanMatching(match_ctx, std::move(once_with_symbols));
 
     once_with_symbols = std::make_unique<Once>(std::move(bound_symbols));

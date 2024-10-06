@@ -1059,6 +1059,11 @@ antlrcpp::Any CypherMainVisitor::visitCypherMatch(MemgraphCypher::CypherMatchCon
     match->tt_= ctx->tt()->accept(this);
   }
   //wzy edit end
+
+  if (ctx->vt()) {
+    match->vt_= ctx->vt()->accept(this);
+  }
+
   match->patterns_ = ctx->pattern()->accept(this).as<std::vector<Pattern *>>();
   return match;
 }
@@ -1066,6 +1071,8 @@ antlrcpp::Any CypherMainVisitor::visitCypherMatch(MemgraphCypher::CypherMatchCon
 antlrcpp::Any CypherMainVisitor::visitCreate(MemgraphCypher::CreateContext *ctx) {
   auto *create = storage_->Create<Create>();
   create->patterns_ = ctx->pattern()->accept(this).as<std::vector<Pattern *>>();
+  if (ctx->vt())
+    create->vt_ = ctx->vt()->accept(this);
   return create;
 }
 
@@ -2064,7 +2071,8 @@ antlrcpp::Any CypherMainVisitor::visitLiteral(MemgraphCypher::LiteralContext *ct
   return visitChildren(ctx);
 }
 
-  antlrcpp::Any CypherMainVisitor::visitVtLiteral(MemgraphCypher::Vt_literalContext *ctx) {
+  antlrcpp::Any CypherMainVisitor::visitVt_literal(MemgraphCypher::Vt_literalContext *ctx) {
+  std::cout<<"###memgraph CypherMainVisitor::visitVtLiteral"<<std::endl;
   if (ctx->StringLiteral() || ctx->integerLiteral() ) {
     int token_position = ctx->getStart()->getTokenIndex();
     auto vtDateParser = [this,token_position](const antlrcpp::Any& v) {
@@ -2211,13 +2219,16 @@ antlrcpp::Any CypherMainVisitor::visitTt(MemgraphCypher::TtContext *ctx) {
 //marcob0020 edit
 antlrcpp::Any CypherMainVisitor::visitVt(MemgraphCypher::VtContext *ctx) {
   auto *vt = storage_->Create<Vt>();
+
   if(ctx->AS()){
     vt->vt_left_ =ctx->as_vliteral->accept(this);// ctx->_localctx->as_literal->accept(this);
     vt->vt_right_ =ctx->as_vliteral->accept(this);// ctx->_localctx->as_literal->accept(this);
+    vt->vt_query_type_ = TemporalQueryType::AS_OF;
     return vt;
   }
   vt->vt_left_ = ctx->from_vliteral->accept(this);
   vt->vt_right_ = ctx->to_vliteral->accept(this);
+  vt->vt_query_type_ = TemporalQueryType::FROM_TO;
   return vt;
 }
 //marcob0020 edit end
@@ -2330,6 +2341,8 @@ antlrcpp::Any CypherMainVisitor::visitWith(MemgraphCypher::WithContext *ctx) {
 antlrcpp::Any CypherMainVisitor::visitMerge(MemgraphCypher::MergeContext *ctx) {
   auto *merge = storage_->Create<Merge>();
   merge->pattern_ = ctx->patternPart()->accept(this);
+  if (ctx->vt())
+    merge->vt_ = ctx->vt()->accept(this);
   for (auto &merge_action : ctx->mergeAction()) {
     auto set = merge_action->set()->accept(this).as<std::vector<Clause *>>();
     if (merge_action->MATCH()) {

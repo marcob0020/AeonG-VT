@@ -113,6 +113,9 @@ const utils::TypeInfo query::BaseLiteral::kType{
 const utils::TypeInfo query::PrimitiveLiteral::kType{
     0xC3F9F780E8B43C7FULL, "PrimitiveLiteral", &query::BaseLiteral::kType};
 
+const utils::TypeInfo query::VtLiteral::kType{
+    0x30BA04E03B8106B8ULL, "VtLiteral", &query::BaseLiteral::kType};
+
 const utils::TypeInfo query::ListLiteral::kType{
     0xFCD408E99786FF0AULL, "ListLiteral", &query::BaseLiteral::kType};
 

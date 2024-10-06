@@ -84,13 +84,13 @@ vt : FOR VT AS OF as_vliteral=vt_literal
 
 unwind : UNWIND expression AS variable ;
 
-merge : MERGE patternPart ( mergeAction )* ;
+merge : MERGE patternPart vt? ( mergeAction )* ;
 
 mergeAction : ( ON MATCH set )
             | ( ON CREATE set )
             ;
 
-create : CREATE pattern ;
+create : CREATE pattern vt? ;
 
 set : SET setItem ( ',' setItem )* ;
 
