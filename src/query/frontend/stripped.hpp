@@ -49,6 +49,10 @@ class StrippedQuery {
   void addAddition_r(const std::string &query) {
     addition_right=query;
   }
+
+ void addVT() {
+
+  }
   //wzy end
 
   /**
@@ -78,6 +82,9 @@ class StrippedQuery {
   const std::optional<std::string> &addition_r() const { return addition_right; }
   //wzy end
 
+ const std::optional<std::string> &vt_first() const { return vt_first_; }
+ const std::optional<std::string> &vt_second() const { return vt_second_; }
+
  private:
   // Return len of matched keyword if something is matched, otherwise 0.
   int MatchKeyword(int start) const;
@@ -96,6 +103,9 @@ class StrippedQuery {
   std::optional<std::string> addition_;
   std::optional<std::string> addition_right;
   //wzy end
+
+  std::optional<std::string> vt_first_;
+  std::optional<std::string> vt_second_;
 
   // Original query.
   std::string original_;

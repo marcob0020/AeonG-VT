@@ -87,8 +87,9 @@ std::vector<Expansion> NormalizePatterns(const SymbolTable &symbol_table, const 
 // as well as edge symbols which determine Cyphermorphism. Collecting filters
 // will lift them out of a pattern and generate new expressions (just like they
 // were in a Where clause).
-void AddMatching(const std::vector<Pattern *> &patterns, Where *where, Tt *tt,SymbolTable &symbol_table, AstStorage &storage,
+void AddMatching(const std::vector<Pattern *> &patterns, Where *where, Tt *tt, Vt *vt,SymbolTable &symbol_table, AstStorage &storage,
                  Matching &matching) {
+  std::cout<<"###memgraph preprocess::AddMatching"<<std::endl;
   auto expansions = NormalizePatterns(symbol_table, patterns);
   std::unordered_set<Symbol> edge_symbols;
   for (const auto &expansion : expansions) {
@@ -145,9 +146,13 @@ void AddMatching(const std::vector<Pattern *> &patterns, Where *where, Tt *tt,Sy
     // std::cout<<"left here hjm: preprocess 139"<<left<<"\n";
   }
   //hjm end
+
+  if (vt) {
+    matching.vt_history_infos_=std::make_tuple(vt->vt_left_, vt->vt_right_,vt->vt_query_type_);
+  }
 }
 void AddMatching(const Match &match, SymbolTable &symbol_table, AstStorage &storage, Matching &matching) {
-  return AddMatching(match.patterns_, match.where_, match.tt_,symbol_table, storage, matching);
+  return AddMatching(match.patterns_, match.where_, match.tt_, match.vt_,  symbol_table, storage, matching);
 }
 
 auto SplitExpressionOnAnd(Expression *expression) {
@@ -563,7 +568,7 @@ std::vector<SingleQueryPart> CollectSingleQueryParts(SymbolTable &symbol_table, 
       query_part->remaining_clauses.push_back(clause);
       if (auto *merge = utils::Downcast<query::Merge>(clause)) {
         query_part->merge_matching.emplace_back(Matching{});
-        AddMatching({merge->pattern_}, nullptr,nullptr, symbol_table, storage, query_part->merge_matching.back());
+        AddMatching({merge->pattern_}, nullptr,nullptr,nullptr, symbol_table, storage, query_part->merge_matching.back());
       } else if (utils::IsSubtype(*clause, With::kType) || utils::IsSubtype(*clause, query::Unwind::kType) ||
                  utils::IsSubtype(*clause, query::CallProcedure::kType) ||
                  utils::IsSubtype(*clause, query::LoadCsv::kType)) {

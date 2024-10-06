@@ -337,7 +337,7 @@ DEFINE_VALIDATED_string(query_modules_directory, "",
                         });
 
 // Logging flags
-DEFINE_bool(also_log_to_stderr, false, "Log messages go to stderr in addition to logfiles");
+DEFINE_bool(also_log_to_stderr, true, "Log messages go to stderr in addition to logfiles");
 DEFINE_string(log_file, "", "Path to where the log should be stored.");
 
 namespace {
@@ -350,7 +350,7 @@ const std::string log_level_help_string =
     fmt::format("Minimum log level. Allowed values: {}", GetAllowedEnumValuesString(log_level_mappings));
 }  // namespace
 
-DEFINE_VALIDATED_string(log_level, "WARNING", log_level_help_string.c_str(), {
+DEFINE_VALIDATED_string(log_level, "TRACE", log_level_help_string.c_str(), {
   if (const auto result = IsValidEnumValueString(value, log_level_mappings); result.HasError()) {
     const auto error = result.GetError();
     switch (error) {

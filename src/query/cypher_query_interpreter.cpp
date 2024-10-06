@@ -184,8 +184,9 @@ std::unique_ptr<LogicalPlan> MakeLogicalPlan(AstStorage ast_storage, CypherQuery
   //hjm begin
   auto history_info=planning_context.history_info_;
   //hjm end
+  auto vt_info=planning_context.vt_infos_;
   return std::make_unique<SingleNodeLogicalPlan>(std::move(root), cost, std::move(ast_storage),
-                                                 std::move(symbol_table),history_info);
+                                                 std::move(symbol_table),history_info, vt_info);
 }
 
 std::shared_ptr<CachedPlan> CypherQueryToPlan(uint64_t hash, AstStorage ast_storage, CypherQuery *query,

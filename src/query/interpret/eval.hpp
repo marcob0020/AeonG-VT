@@ -813,4 +813,6 @@ int64_t EvaluateInt(ExpressionEvaluator *evaluator, Expression *expr, const std:
 
 std::optional<size_t> EvaluateMemoryLimit(ExpressionEvaluator *eval, Expression *memory_limit, size_t memory_scale);
 
+std::optional<utils::VTDateTime> EvaluateTemporalValue(ExpressionEvaluator *eval, Expression *memory_limit);
+
 }  // namespace query

@@ -202,7 +202,10 @@ struct InterpreterContext {
   std::optional<int64_t> addition;
   std::optional<int64_t> addition_right;
 
+
+  std::optional<TemporalFilter> vt;
   //wzy end
+
 };
 
 /// Function that is used to tell all active interpreters that they should stop

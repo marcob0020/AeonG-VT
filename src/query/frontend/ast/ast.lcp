@@ -23,6 +23,7 @@
 #include "query/typed_value.hpp"
 #include "storage/v2/property_value.hpp"
 #include "utils/typeinfo.hpp"
+#include "query/temporal_filter.hpp"
 
 cpp<#
 
@@ -385,7 +386,10 @@ cpp<#
                  :slk-load (slk-load-ast-pointer "Expression"))
    (vt-right "Expression *" :initval "nullptr" :scope :public
                  :slk-save #'slk-save-ast-pointer
-                 :slk-load (slk-load-ast-pointer "Expression")))
+                 :slk-load (slk-load-ast-pointer "Expression"))
+   (vt-query-type "TemporalQueryType" :initval "TemporalQueryType::NONE" :scope :public
+                    :slk-save #'slk-save-ast-pointer
+                    :slk-load (slk-load-ast-pointer "TemporalQueryType")))
   (:public
     #>cpp
     using ::utils::Visitable<HierarchicalTreeVisitor>::Accept;
@@ -399,7 +403,7 @@ cpp<#
     cpp<#)
   (:protected
     #>cpp
-    Vt(query::Expression *vt_left, query::Expression *vt_right)
+    Vt(query::Expression *vt_left, query::Expression *vt_right, TemporalQueryType type)
         : vt_left_(vt_left), vt_right_(vt_right) {}
     cpp<#)
   (:private
@@ -704,6 +708,33 @@ cpp<#
     cpp<#)
   (:serialize (:slk))
   (:clone))
+
+ (lcp:define-class vt-literal (base-literal)
+   ((value "::storage::PropertyValue" :scope :public)
+    (token-position :int32_t :scope :public :initval -1
+                    :documentation "This field contains token position of literal used to create VtLiteral object. If VtLiteral object is not created from query, leave its value at -1."))
+   (:public
+     #>cpp
+     VtLiteral() = default;
+
+     DEFVISITABLE(ExpressionVisitor<TypedValue>);
+     DEFVISITABLE(ExpressionVisitor<void>);
+     DEFVISITABLE(HierarchicalTreeVisitor);
+     cpp<#)
+   (:private
+     #>cpp
+     friend class AstStorage;
+     cpp<#)
+   (:protected
+     #>cpp
+     template <typename T>
+     explicit VtLiteral(T value) : value_(value) {}
+     template <typename T>
+     VtLiteral(T value, int token_position)
+         : value_(value), token_position_(token_position) {}
+     cpp<#)
+   (:serialize (:slk))
+   (:clone))
 
 (lcp:define-class list-literal (base-literal)
   ((elements "std::vector<Expression *>"
@@ -1761,18 +1792,30 @@ cpp<#
   (:clone))
 
 (lcp:define-class create (clause)
-  ((patterns "std::vector<Pattern *>"
+  (
+     (patterns "std::vector<Pattern *>"
              :scope :public
              :slk-save #'slk-save-ast-vector
-             :slk-load (slk-load-ast-vector "Pattern")))
+             :slk-load (slk-load-ast-vector "Pattern"))
+     (vt "Vt *" :initval "nullptr" :scope :public
+             :slk-save #'slk-save-ast-pointer
+             :slk-load (slk-load-ast-pointer "Vt"))
+  )
   (:public
     #>cpp
     Create() = default;
 
     bool Accept(HierarchicalTreeVisitor &visitor) override {
       if (visitor.PreVisit(*this)) {
+        bool cont = true;
         for (auto &pattern : patterns_) {
-          if (!pattern->Accept(visitor)) break;
+          if (!pattern->Accept(visitor)) {
+            cont = false;
+            break;
+          }
+        }
+        if (cont && vt_){
+            vt_->Accept(visitor);
         }
       }
       return visitor.PostVisit(*this);
@@ -2231,6 +2274,9 @@ cpp<#
   ((pattern "Pattern *" :initval "nullptr" :scope :public
             :slk-save #'slk-save-ast-pointer
             :slk-load (slk-load-ast-pointer "Pattern"))
+   (vt "Vt *" :initval "nullptr" :scope :public
+                :slk-save #'slk-save-ast-pointer
+                :slk-load (slk-load-ast-pointer "Vt"))
    (on-match "std::vector<Clause *>"
              :scope :public
              :slk-save #'slk-save-ast-vector
@@ -2246,6 +2292,11 @@ cpp<#
     bool Accept(HierarchicalTreeVisitor &visitor) override {
       if (visitor.PreVisit(*this)) {
         bool cont = pattern_->Accept(visitor);
+        if (cont && vt_){
+            if(!vt_->Accept(visitor)){
+                cont = false;
+            }
+        }
         if (cont) {
           for (auto &set : on_match_) {
             if (!set->Accept(visitor)) {

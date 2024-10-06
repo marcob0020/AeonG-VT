@@ -152,18 +152,43 @@ auto MakeLogicalPlan(TPlanningContext *context, TPlanPostProcess *post_process, 
   }
   
   //hjm begin
-  auto history_infos=context->history_infos_;
-  if(history_infos){
-    auto *param_lookup = dynamic_cast<ParameterLookup *>((*history_infos).first);
+  auto tt_infos=context->history_infos_;
+  if(tt_infos){
+    auto *param_lookup = dynamic_cast<ParameterLookup *>((*tt_infos).first);
     auto left_value=param_lookup->token_position_;//post_process->getParameters().AtTokenPosition(param_lookup->token_position_).ValueInt();
     
-    auto *param_lookup2 = dynamic_cast<ParameterLookup *>((*history_infos).second);
+    auto *param_lookup2 = dynamic_cast<ParameterLookup *>((*tt_infos).second);
     auto right_value=param_lookup2->token_position_;//post_process->getParameters().AtTokenPosition(param_lookup2->token_position_).ValueInt();
     
     auto &history_info = *context->history_info_;
     history_info=std::make_pair(left_value,right_value);
     // std::cout<<"here hjm 12345:"<<value.ValueInt()<<"\n";
   }
+
+  // auto vt_infos=context->vt_history_infos_;
+  // if(vt_infos) {
+  //   auto *literal_lookup = dynamic_cast<PrimitiveLiteral *>((*vt_infos).first);
+  //   auto left_value=literal_lookup->value_; //post_process->getParameters().AtTokenPosition(param_lookup->token_position_).ValueInt();
+  //
+  //   auto *literal_lookup2 = dynamic_cast<PrimitiveLiteral *>((*tt_infos).second);
+  //   auto right_value=literal_lookup2->value_;//post_process->getParameters().AtTokenPosition(param_lookup2->token_position_).ValueInt();
+  //
+  //   TemporalFilter vt_info;
+  //   if (right_value.IsTemporalData() && left_value.IsTemporalData()) {
+  //     vt_info.type = TemporalQueryType::FROM_TO;
+  //     vt_info.first = utils::VTDateTime(left_value.ValueTemporalData().microseconds);
+  //     vt_info.second = utils::VTDateTime(right_value.ValueTemporalData().microseconds);
+  //   }
+  //   else if (left_value.IsTemporalData()) {
+  //     vt_info.type = TemporalQueryType::AS_OF;
+  //     vt_info.first = utils::VTDateTime(left_value.ValueTemporalData().microseconds);
+  //   }else {
+  //     vt_info.type = TemporalQueryType::NONE;
+  //   }
+  //
+  //   auto &vt_info_ref = *context->vt_info_;
+  //   vt_info_ref= vt_info;
+  // }
   //hjm end
 
   return std::make_pair(std::move(last_plan), total_cost);

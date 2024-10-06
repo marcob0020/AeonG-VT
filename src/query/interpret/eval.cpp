@@ -32,4 +32,37 @@ std::optional<size_t> EvaluateMemoryLimit(ExpressionEvaluator *eval, Expression 
   return limit * memory_scale;
 }
 
+std::optional<utils::VTDateTime> EvaluateTemporalValue(ExpressionEvaluator *eval, Expression *temporal_v) {
+  if (!temporal_v) return std::nullopt;
+
+  auto temporal_value = temporal_v->Accept(*eval);
+
+  if (temporal_value.IsInt()) {
+    return utils::VTDateTime(temporal_value.ValueInt());
+  }
+
+  if(temporal_value.IsString()) {
+    auto [date, time] = utils::ParseVTDateTimeParameters(temporal_value.ValueString());
+    return utils::VTDateTime(date, time);
+  }
+
+  if(temporal_value.IsDate() ) {
+    return utils::VTDateTime(temporal_value.ValueDate().MicrosecondsSinceEpoch());
+  }
+
+  if(temporal_value.IsLocalTime()) {
+    return utils::VTDateTime(temporal_value.ValueLocalTime().MicrosecondsSinceEpoch());
+  }
+
+  if (temporal_value.IsLocalDateTime()) {
+    return utils::VTDateTime(temporal_value.ValueLocalDateTime().MicrosecondsSinceEpoch());
+  }
+
+  if (temporal_value.IsVtDateTime()) {
+    return utils::VTDateTime(temporal_value.ValueVtDateTime());
+  }
+
+  throw QueryRuntimeException("VT date must be an integer or a datetime");
+}
+
 }  // namespace query

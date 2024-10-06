@@ -906,14 +906,21 @@ PullPlan::PullPlan(const std::shared_ptr<CachedPlan> plan, const Parameters &par
   ctx_.trigger_context_collector = trigger_context_collector;
   
   //hjm begin
-  auto &left=interpreter_context->addition;
-  auto &right=interpreter_context->addition_right;
-  ctx_.addition = left;//interpreter_context->addition;
-  ctx_.addition_right = right;//interpreter_context->addition_right;
-  left=std::nullopt;
-  right=std::nullopt;
+  auto &tt_left=interpreter_context->addition;
+  auto &tt_right=interpreter_context->addition_right;
+  ctx_.addition = tt_left;//interpreter_context->addition;
+  ctx_.addition_right = tt_right;//interpreter_context->addition_right;
+  tt_left=std::nullopt;
+  tt_right=std::nullopt;
   //hjm end
 
+
+  auto vt_filter = interpreter_context->vt;
+
+  if (vt_filter == std::nullopt) {
+    vt_filter = TemporalFilter();
+  }
+  ctx_.addition_vt = vt_filter.value();
 }
 //wzy edit end
 
@@ -1129,7 +1136,40 @@ PreparedQuery PrepareCypherQuery(ParsedQuery parsed_query, std::map<std::string,
   }catch(...){
 
   }
+
   //hjm end
+
+  std::cout<<"###memgraph intepreter::PrepareCypherQuery "<<std::endl;
+
+  auto vt_exprs = plan->getVTHistoryInfo();
+  if(vt_exprs) {
+    switch (std::get<2>(vt_exprs.value())) {
+      case TemporalQueryType::NONE:
+        interpreter_context->vt = TemporalFilter();
+      break;
+      case TemporalQueryType::AS_OF: {
+        auto as_of_vt = EvaluateTemporalValue(&evaluator,std::get<0>(vt_exprs.value()));
+        TemporalFilter tf;
+        tf.type = TemporalQueryType::AS_OF;
+        tf.first = as_of_vt.value();
+        interpreter_context->vt = tf;
+      }
+      break;
+      case TemporalQueryType::FROM_TO: {
+        auto from_vt = EvaluateTemporalValue(&evaluator,std::get<0>(vt_exprs.value()));
+        auto to_vt = EvaluateTemporalValue(&evaluator,std::get<1>(vt_exprs.value()));
+        TemporalFilter tf;
+        tf.type = TemporalQueryType::FROM_TO;
+        tf.first = from_vt.value();
+        tf.second = to_vt.value();
+        interpreter_context->vt = tf;
+      }
+      break;
+    }
+  }else {
+    interpreter_context->vt = TemporalFilter();
+  }
+
   summary->insert_or_assign("cost_estimate", plan->cost());
   auto rw_type_checker = plan::ReadWriteTypeChecker();
   rw_type_checker.InferRWType(const_cast<plan::LogicalOperator &>(plan->plan()));
