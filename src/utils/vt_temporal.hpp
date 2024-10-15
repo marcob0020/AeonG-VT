@@ -67,6 +67,14 @@ public:
     int64_t get_microseconds() const {
         return microseconds;
     }
+
+    static VTDateTime constexpr max() noexcept {
+        return VTDateTime(std::numeric_limits<int64_t>::max());
+    }
+
+    static VTDateTime constexpr min() noexcept {
+        return VTDateTime(std::numeric_limits<int64_t>::lowest());
+    }
 };
 
 struct VTDateTimeHash {
@@ -74,6 +82,8 @@ struct VTDateTimeHash {
 };
 
 VTDateTime CurrentVTDateTime();
+
+
 
 } // utils
 
