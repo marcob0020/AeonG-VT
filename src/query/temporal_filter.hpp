@@ -52,6 +52,26 @@ namespace query{
         return type != TemporalQueryType::NONE;
       }
 
+      utils::VTDateTime get_first() const {
+        switch (type) {
+          case TemporalQueryType::NONE:
+            return utils::VTDateTime::min();
+          default:
+            return first;
+        }
+      }
+
+      utils::VTDateTime get_second() const {
+        switch (type) {
+          case TemporalQueryType::NONE:
+            return utils::VTDateTime::max();
+          case TemporalQueryType::AS_OF:
+            return first;
+          default:
+            return second;
+        }
+      }
+
       friend std::ostream &operator<<(std::ostream &os, const TemporalFilter &ldt) {
         os << "Type: " << ldt.type;
         os << "{" << ldt.first << "," << ldt.second << "}";
