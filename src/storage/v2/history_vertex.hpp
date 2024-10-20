@@ -38,13 +38,18 @@ struct HistoryVertex {
     out_edges=another->out_edges;
     in_history_edges=another->in_history_edges;
     out_history_edges=another->out_history_edges;
+    vt = another->vt;
   }
 
-  HistoryVertex(Gid gid) : gid(gid) {
+  HistoryVertex(const Gid gid) : gid(gid) {
     tt_ts=0;
     tt_te=std::numeric_limits<uint64_t>::max();
   }
-  HistoryVertex(Gid gid,uint64_t tt_ts,uint64_t tt_te) : gid(gid),tt_ts(tt_ts),tt_te(tt_te){
+  HistoryVertex(const Gid gid,uint64_t tt_ts,uint64_t tt_te) : gid(gid),tt_ts(tt_ts),tt_te(tt_te){
+    tt_ts=0;
+    tt_te=std::numeric_limits<uint64_t>::max();
+  }
+  HistoryVertex(const Gid gid,uint64_t tt_ts,uint64_t tt_te, const TemporalPeriod& vt) : gid(gid),tt_ts(tt_ts),tt_te(tt_te), vt(vt){
     tt_ts=0;
     tt_te=std::numeric_limits<uint64_t>::max();
   }
@@ -67,6 +72,8 @@ struct HistoryVertex {
 
   uint64_t tt_ts;//transaction start time
   uint64_t tt_te;//transaction end time
+
+  TemporalPeriod vt;
 
   // bool HasLabel(LabelId label);
   //hjm end
