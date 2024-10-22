@@ -131,6 +131,59 @@ inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, Vie
   }
 }
 
+template <typename TCallback>
+inline void ApplyTemporalDeltasForRead(Transaction *transaction, const Delta *delta, View view, const TCallback &callback, const query::TemporalFilter &vt) {
+  // if the transaction is not committed, then its deltas have transaction_id for the timestamp, otherwise they have
+  // its commit timestamp set.
+  // This allows the transaction to see its changes even though it's committed.
+  const auto commit_timestamp = transaction->commit_timestamp
+                                    ? transaction->commit_timestamp->load(std::memory_order_acquire)
+                                    : transaction->transaction_id;
+  while (delta != nullptr) {
+    auto ts = delta->timestamp->load(std::memory_order_acquire);
+    auto cid = delta->command_id;
+    auto& delta_vt = delta->vt;
+
+    // For SNAPSHOT ISOLATION -> we can only see the changes which were committed before the start of the current
+    // transaction
+    //
+    // For READ COMMITTED -> we can only see the changes which are committed. Commit timestamps of
+    // uncommitted changes are set to the transaction id of the transaction that made the change. Transaction id is
+    // always higher than start or commit timestamps so we know if the timestamp is lower than the initial transaction
+    // id value, that the change is committed.
+    //
+    // For READ UNCOMMITTED -> we accept any change.
+    if ((transaction->isolation_level == IsolationLevel::SNAPSHOT_ISOLATION && ts < transaction->start_timestamp) ||
+        (transaction->isolation_level == IsolationLevel::READ_COMMITTED && ts < kTransactionInitialId) ||
+        (transaction->isolation_level == IsolationLevel::READ_UNCOMMITTED)) {
+      break;
+    }
+
+    // We shouldn't undo our newest changes because the user requested a NEW
+    // view of the database.
+    if (view == View::NEW && ts == commit_timestamp && cid <= transaction->command_id) {
+      break;
+    }
+
+    // We shouldn't undo our older changes because the user requested a OLD view
+    // of the database.
+    if (view == View::OLD && ts == commit_timestamp && cid < transaction->command_id) {
+      break;
+    }
+
+    // Deltas with vt outside the requested range are discarded
+    if (!vt.matches(delta_vt.first,delta_vt.second)) {
+      break;
+    }
+
+    // This delta must be applied, call the callback with the sliced interval.
+    callback(*delta,delta_vt.intersect({vt.first,vt.second}));
+
+    // Move to the next delta.
+    delta = delta->next.load(std::memory_order_acquire);
+  }
+}
+
 /// This function prepares the object for a write. It checks whether there are
 /// any serialization errors in the process (eg. the object can't be written to
 /// from this transaction because it is being written to from another
