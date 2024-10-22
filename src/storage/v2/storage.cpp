@@ -45,6 +45,8 @@
 #include "utils/uuid.hpp"
 
 /// REPLICATION ///
+#include <utils/interval.hpp>
+
 #include "storage/v2/replication/replication_client.hpp"
 #include "storage/v2/replication/replication_server.hpp"
 #include "storage/v2/replication/rpc.hpp"
@@ -794,6 +796,18 @@ VertexAccessor Storage::Accessor::CreateVertex() {
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
+VertexAccessor Storage::Accessor::CreateVertex(const TemporalPeriod& vt) {
+  OOMExceptionEnabler oom_exception;
+  auto gid = storage_->vertex_id_.fetch_add(1, std::memory_order_acq_rel);
+  auto acc = storage_->vertices_.access();
+  auto delta = CreateDeleteObjectDelta(&transaction_,vt);
+  auto [it, inserted] = acc.insert(Vertex{storage::Gid::FromUint(gid), delta});
+  MG_ASSERT(inserted, "The vertex must be inserted here!");
+  MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
+  delta->prev.Set(&*it);
+  return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
+}
+
 VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid) {
   OOMExceptionEnabler oom_exception;
   // NOTE: When we update the next `vertex_id_` here we perform a RMW
@@ -806,6 +820,25 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid) {
                              std::memory_order_release);
   auto acc = storage_->vertices_.access();
   auto delta = CreateDeleteObjectDelta(&transaction_);
+  auto [it, inserted] = acc.insert(Vertex{gid, delta});
+  MG_ASSERT(inserted, "The vertex must be inserted here!");
+  MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
+  delta->prev.Set(&*it);
+  return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
+}
+
+VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const TemporalPeriod& vt) {
+  OOMExceptionEnabler oom_exception;
+  // NOTE: When we update the next `vertex_id_` here we perform a RMW
+  // (read-modify-write) operation that ISN'T atomic! But, that isn't an issue
+  // because this function is only called from the replication delta applier
+  // that runs single-threadedly and while this instance is set-up to apply
+  // threads (it is the replica), it is guaranteed that no other writes are
+  // possible.
+  storage_->vertex_id_.store(std::max(storage_->vertex_id_.load(std::memory_order_acquire), gid.AsUint() + 1),
+                             std::memory_order_release);
+  auto acc = storage_->vertices_.access();
+  auto delta = CreateDeleteObjectDelta(&transaction_,vt);
   auto [it, inserted] = acc.insert(Vertex{gid, delta});
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
@@ -897,6 +930,89 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
   }
 
   
+  //hjm end
+
+  return std::make_optional<VertexAccessor>(vertex_ptr, &transaction_, &storage_->indices_, &storage_->constraints_,
+                                            config_, true);
+}
+
+Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAccessor *vertex, const TemporalPeriod& vt) {
+  MG_ASSERT(vertex->transaction_ == &transaction_,
+            "VertexAccessor must be from the same transaction as the storage "
+            "accessor when deleting a vertex!");
+  auto *vertex_ptr = vertex->vertex_;
+
+  std::lock_guard<utils::SpinLock> guard(vertex_ptr->lock);
+
+  if (!PrepareForWrite(&transaction_, vertex_ptr)) return Error::SERIALIZATION_ERROR;
+
+  if (vertex_ptr->deleted) {
+    return std::optional<VertexAccessor>{};
+  }
+
+  if (!vertex_ptr->in_edges.empty() || !vertex_ptr->out_edges.empty()) return Error::VERTEX_HAS_EDGES;
+  //hjm begin set transaction st
+  auto ts=vertex_ptr->transaction_st;
+  auto before_delta=vertex_ptr->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(ts >= kTransactionInitialId){
+      if(ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+  //hjm end
+  auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vt);
+  vertex_ptr->deleted = true;
+
+  //hjm begin
+  delta->transaction_st=ts;
+  //save vertex to restore
+  nlohmann::json data = nlohmann::json::object();
+  //labels
+  auto maybe_labels = vertex_ptr->labels;
+  auto add_labels=std::vector<std::pair<std::string,std::string>>();
+  for (const auto &label : maybe_labels) {
+    add_labels.emplace_back("AL",storage_->name_id_mapper_.IdToName(label.AsUint()));//name_id_mapper_.IdToName(label.AsUint())
+  }
+  data["L"] =add_labels;
+
+  //properties
+  auto maybe_properties = vertex_ptr->properties.Properties();;
+  nlohmann::json data2 = nlohmann::json::object();
+  for (const auto &prop : maybe_properties) {
+    auto property_name = storage_->name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
+    auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+    data2[property_name] = property_value;
+  }
+  data["SP"]=data2;
+  delta->add_info=data;
+  if(prinfFlag){
+    auto print=prinfVertex(vertex_ptr->gid.AsUint(),ts,maybe_properties,maybe_labels);
+    transaction_.prinfVertex_.emplace_back(print);
+  }
+
+
   //hjm end
 
   return std::make_optional<VertexAccessor>(vertex_ptr, &transaction_, &storage_->indices_, &storage_->constraints_,
@@ -1031,6 +1147,135 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
       std::move(deleted_edges));
 }
 
+Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Storage::Accessor::DetachDeleteVertex(
+    VertexAccessor *vertex, const TemporalPeriod& vt) {
+  using ReturnType = std::pair<VertexAccessor, std::vector<EdgeAccessor>>;
+
+  MG_ASSERT(vertex->transaction_ == &transaction_,
+            "VertexAccessor must be from the same transaction as the storage "
+            "accessor when deleting a vertex!");
+  auto *vertex_ptr = vertex->vertex_;
+
+  std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> in_edges;
+  std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> out_edges;
+
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_ptr->lock);
+
+    if (!PrepareForWrite(&transaction_, vertex_ptr)) return Error::SERIALIZATION_ERROR;
+
+    if (vertex_ptr->deleted) return std::optional<ReturnType>{};
+
+    in_edges = vertex_ptr->in_edges;
+    out_edges = vertex_ptr->out_edges;
+  }
+
+  std::vector<EdgeAccessor> deleted_edges;
+  for (const auto &item : in_edges) {
+    auto [edge_type, from_vertex, edge] = item;
+    EdgeAccessor e(edge, edge_type, from_vertex, vertex_ptr, &transaction_, &storage_->indices_,
+                   &storage_->constraints_, config_);
+    auto ret = DeleteEdge(&e,vt);
+    if (ret.HasError()) {
+      MG_ASSERT(ret.GetError() == Error::SERIALIZATION_ERROR, "Invalid database state!");
+      return ret.GetError();
+    }
+
+    if (ret.GetValue()) {
+      deleted_edges.push_back(*ret.GetValue());
+    }
+  }
+  for (const auto &item : out_edges) {
+    auto [edge_type, to_vertex, edge] = item;
+    EdgeAccessor e(edge, edge_type, vertex_ptr, to_vertex, &transaction_, &storage_->indices_, &storage_->constraints_,
+                   config_);
+    auto ret = DeleteEdge(&e,vt);
+    if (ret.HasError()) {
+      MG_ASSERT(ret.GetError() == Error::SERIALIZATION_ERROR, "Invalid database state!");
+      return ret.GetError();
+    }
+
+    if (ret.GetValue()) {
+      deleted_edges.push_back(*ret.GetValue());
+    }
+  }
+
+  std::lock_guard<utils::SpinLock> guard(vertex_ptr->lock);
+
+  // We need to check again for serialization errors because we unlocked the
+  // vertex. Some other transaction could have modified the vertex in the
+  // meantime if we didn't have any edges to delete.
+
+  if (!PrepareForWrite(&transaction_, vertex_ptr)) return Error::SERIALIZATION_ERROR;
+
+  MG_ASSERT(!vertex_ptr->deleted, "Invalid database state!");
+
+  auto ts=vertex_ptr->transaction_st;
+  auto before_delta=vertex_ptr->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(ts >= kTransactionInitialId){
+      if(ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        ts=before_delta->transaction_st;
+      }else{
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+
+
+  auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vt);
+  vertex_ptr->deleted = true;
+
+
+  delta->transaction_st=ts;
+  //save vertex to restore
+  nlohmann::json data = nlohmann::json::object();
+  auto maybe_labels = vertex_ptr->labels;
+  auto add_labels=std::vector<std::pair<std::string,std::string>>();
+  for (const auto &label : maybe_labels) {
+    add_labels.emplace_back("AL",storage_->name_id_mapper_.IdToName(label.AsUint()));//name_id_mapper_.IdToName(label.AsUint())
+  }
+  data["L"] =add_labels;
+
+  //properties
+  auto maybe_properties = vertex_ptr->properties.Properties();;
+  nlohmann::json data2 = nlohmann::json::object();
+  for (const auto &prop : maybe_properties) {
+    auto property_name = storage_->name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
+    auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+    data2[property_name] = property_value;
+  }
+  data["SP"]=data2;
+  delta->add_info=data;
+
+  if(prinfFlag){
+    auto print=prinfVertex(vertex_ptr->gid.AsUint(),ts,maybe_properties,maybe_labels);
+    transaction_.prinfVertex_.emplace_back(print);
+  }
+
+  return std::make_optional<ReturnType>(
+      VertexAccessor{vertex_ptr, &transaction_, &storage_->indices_, &storage_->constraints_, config_, true},
+      std::move(deleted_edges));
+}
+
+
 Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type) {
   OOMExceptionEnabler oom_exception;
   MG_ASSERT(from->transaction_ == to->transaction_,
@@ -1164,6 +1409,141 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   return EdgeAccessor(edge, edge_type, from_vertex, to_vertex, &transaction_, &storage_->indices_,
                       &storage_->constraints_, config_);
 }
+
+Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, const TemporalPeriod& vt) {
+  OOMExceptionEnabler oom_exception;
+  MG_ASSERT(from->transaction_ == to->transaction_,
+            "VertexAccessors must be from the same transaction when creating "
+            "an edge!");
+  MG_ASSERT(from->transaction_ == &transaction_,
+            "VertexAccessors must be from the same transaction in when "
+            "creating an edge!");
+
+  auto from_vertex = from->vertex_;
+  auto to_vertex = to->vertex_;
+
+  // Obtain the locks by `gid` order to avoid lock cycles.
+  std::unique_lock<utils::SpinLock> guard_from(from_vertex->lock, std::defer_lock);
+  std::unique_lock<utils::SpinLock> guard_to(to_vertex->lock, std::defer_lock);
+  if (from_vertex->gid < to_vertex->gid) {
+    guard_from.lock();
+    guard_to.lock();
+  } else if (from_vertex->gid > to_vertex->gid) {
+    guard_to.lock();
+    guard_from.lock();
+  } else {
+    // The vertices are the same vertex, only lock one.
+    guard_from.lock();
+  }
+
+  if (!PrepareForWrite(&transaction_, from_vertex)) return Error::SERIALIZATION_ERROR;
+  if (from_vertex->deleted) return Error::DELETED_OBJECT;
+
+  if (to_vertex != from_vertex) {
+    if (!PrepareForWrite(&transaction_, to_vertex)) return Error::SERIALIZATION_ERROR;
+    if (to_vertex->deleted) return Error::DELETED_OBJECT;
+  }
+
+
+  auto from_ts=from_vertex->ve_tt_ts;
+  auto before_delta=from_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(!delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    from_ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(from_ts >= kTransactionInitialId){
+      if(from_ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        from_ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<from_ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+
+  auto to_ts=to_vertex->ve_tt_ts;
+  before_delta=to_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(!delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    to_ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(to_ts >= kTransactionInitialId){
+      if(to_ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        to_ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<to_ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+  //hjm end
+
+  auto gid = storage::Gid::FromUint(storage_->edge_id_.fetch_add(1, std::memory_order_acq_rel));
+  EdgeRef edge(gid);
+  if (config_.properties_on_edges) {
+    auto acc = storage_->edges_.access();
+    auto delta = CreateDeleteObjectDelta(&transaction_, vt);
+    auto [it, inserted] = acc.insert(Edge(gid, delta));
+    MG_ASSERT(inserted, "The edge must be inserted here!");
+    MG_ASSERT(it != acc.end(), "Invalid Edge accessor!");
+    //hjm begin
+    delta->gid=gid;
+    it->from_gid=from_vertex->gid;
+    it->to_gid=to_vertex->gid;
+    // std::cout<<"create edge here::2111"<<it->from_gid.AsUint()<<" "<<it->to_gid.AsUint()<<"\n";
+    //hjm end
+    edge = EdgeRef(&*it);
+    delta->prev.Set(&*it);
+  }
+
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge, vt);
+  from_vertex->out_edges.emplace_back(edge_type, to_vertex, edge);
+  //hjm begin
+  delta->transaction_st = from_ts;
+  transaction_.ve_changed.insert(from_vertex->gid);
+  //hjm end
+
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge, vt);
+  to_vertex->in_edges.emplace_back(edge_type, from_vertex, edge);
+  //hjm begin
+  delta->transaction_st = to_ts;
+  transaction_.ve_changed.insert(to_vertex->gid);
+  //hjm end
+  // Increment edge count.
+  storage_->edge_count_.fetch_add(1, std::memory_order_acq_rel);
+
+  return EdgeAccessor(edge, edge_type, from_vertex, to_vertex, &transaction_, &storage_->indices_,
+                      &storage_->constraints_, config_);
+}
+
 
 Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type,
                                                    storage::Gid gid) {
@@ -1308,6 +1688,151 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   return EdgeAccessor(edge, edge_type, from_vertex, to_vertex, &transaction_, &storage_->indices_,
                       &storage_->constraints_, config_);
 }
+
+Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type,
+                                                   storage::Gid gid, const TemporalPeriod& vt) {
+  OOMExceptionEnabler oom_exception;
+  MG_ASSERT(from->transaction_ == to->transaction_,
+            "VertexAccessors must be from the same transaction when creating "
+            "an edge!");
+  MG_ASSERT(from->transaction_ == &transaction_,
+            "VertexAccessors must be from the same transaction in when "
+            "creating an edge!");
+
+  auto from_vertex = from->vertex_;
+  auto to_vertex = to->vertex_;
+
+  // Obtain the locks by `gid` order to avoid lock cycles.
+  std::unique_lock<utils::SpinLock> guard_from(from_vertex->lock, std::defer_lock);
+  std::unique_lock<utils::SpinLock> guard_to(to_vertex->lock, std::defer_lock);
+  if (from_vertex->gid < to_vertex->gid) {
+    guard_from.lock();
+    guard_to.lock();
+  } else if (from_vertex->gid > to_vertex->gid) {
+    guard_to.lock();
+    guard_from.lock();
+  } else {
+    // The vertices are the same vertex, only lock one.
+    guard_from.lock();
+  }
+
+  if (!PrepareForWrite(&transaction_, from_vertex)) return Error::SERIALIZATION_ERROR;
+  if (from_vertex->deleted) return Error::DELETED_OBJECT;
+
+  if (to_vertex != from_vertex) {
+    if (!PrepareForWrite(&transaction_, to_vertex)) return Error::SERIALIZATION_ERROR;
+    if (to_vertex->deleted) return Error::DELETED_OBJECT;
+  }
+
+  //hjm begin set from veretx transaction st
+  auto from_ts=from_vertex->ve_tt_ts;
+  auto before_delta=from_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(!delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    from_ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(from_ts >= kTransactionInitialId){
+      if(from_ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        from_ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<from_ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+
+  auto to_ts=to_vertex->ve_tt_ts;
+  before_delta=to_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(!delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    to_ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(to_ts >= kTransactionInitialId){
+      if(to_ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        to_ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<to_ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+
+  //hjm end
+
+  // NOTE: When we update the next `edge_id_` here we perform a RMW
+  // (read-modify-write) operation that ISN'T atomic! But, that isn't an issue
+  // because this function is only called from the replication delta applier
+  // that runs single-threadedly and while this instance is set-up to apply
+  // threads (it is the replica), it is guaranteed that no other writes are
+  // possible.
+  storage_->edge_id_.store(std::max(storage_->edge_id_.load(std::memory_order_acquire), gid.AsUint() + 1),
+                           std::memory_order_release);
+
+  EdgeRef edge(gid);
+  if (config_.properties_on_edges) {
+    auto acc = storage_->edges_.access();
+    auto delta = CreateDeleteObjectDelta(&transaction_, vt);
+    auto [it, inserted] = acc.insert(Edge(gid, delta));
+    MG_ASSERT(inserted, "The edge must be inserted here!");
+    MG_ASSERT(it != acc.end(), "Invalid Edge accessor!");
+    //hjm begin
+    it->from_gid=from_vertex->gid;
+    it->to_gid=to_vertex->gid;
+    delta->gid=gid;
+    //hjm end
+    edge = EdgeRef(&*it);
+    delta->prev.Set(&*it);
+  }
+
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge, vt);
+  from_vertex->out_edges.emplace_back(edge_type, to_vertex, edge);
+  //hjm begin
+  delta->transaction_st = from_ts;
+  transaction_.ve_changed.insert(from_vertex->gid);
+  //hjm end
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge, vt);
+  to_vertex->in_edges.emplace_back(edge_type, from_vertex, edge);
+
+  //hjm begin
+  delta->transaction_st = to_ts;
+  transaction_.ve_changed.insert(to_vertex->gid);
+  //hjm end
+
+  // Increment edge count.
+  storage_->edge_count_.fetch_add(1, std::memory_order_acq_rel);
+
+  return EdgeAccessor(edge, edge_type, from_vertex, to_vertex, &transaction_, &storage_->indices_,
+                      &storage_->constraints_, config_);
+}
+
 
 Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *edge) {
   MG_ASSERT(edge->transaction_ == &transaction_,
@@ -1504,6 +2029,208 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   return std::make_optional<EdgeAccessor>(edge_ref, edge_type, from_vertex, to_vertex, &transaction_,
                                           &storage_->indices_, &storage_->constraints_, config_, true);
 }
+
+Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *edge, const TemporalPeriod& vt) {
+  MG_ASSERT(edge->transaction_ == &transaction_,
+            "EdgeAccessor must be from the same transaction as the storage "
+            "accessor when deleting an edge!");
+  auto edge_ref = edge->edge_;
+  auto edge_type = edge->edge_type_;
+
+  std::unique_lock<utils::SpinLock> guard;
+  if (config_.properties_on_edges) {
+    auto edge_ptr = edge_ref.ptr;
+    guard = std::unique_lock<utils::SpinLock>(edge_ptr->lock);
+
+    if (!PrepareForWrite(&transaction_, edge_ptr)) return Error::SERIALIZATION_ERROR;
+
+    if (edge_ptr->deleted) return std::optional<EdgeAccessor>{};
+  }
+
+
+  auto *from_vertex = edge->from_vertex_;
+  auto *to_vertex = edge->to_vertex_;
+
+  //hjm begin set ransaction st
+  uint64_t ts=0;
+  if (config_.properties_on_edges){
+    auto edge_ptr = edge_ref.ptr;
+    ts=edge_ptr->transaction_st;
+    auto before_delta=edge_ptr->delta;
+    if (before_delta != nullptr){
+      ts = before_delta->timestamp->load(std::memory_order_acquire);
+      if(ts >= kTransactionInitialId){
+        if(ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+          ts=before_delta->transaction_st;
+        }else{
+          std::cout<<"SERIALIZATION_ERROR"<<ts<<" "<<transaction_.transaction_id<<"\n";
+          return Error::SERIALIZATION_ERROR;
+        }
+      }
+    }
+  }
+
+  auto from_ts=from_vertex->ve_tt_ts;
+  interval<bool> from_coverage; //todo
+  auto before_delta=from_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(!delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    from_ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(from_ts >= kTransactionInitialId){
+      if(from_ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        from_ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<from_ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+
+  auto to_ts=to_vertex->ve_tt_ts;
+  interval<bool> to_coverage; //todo
+  before_delta=to_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(!delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    to_ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(to_ts >= kTransactionInitialId){
+      if(to_ts==transaction_.transaction_id){//ts >= kTransactionInitialId &
+        to_ts=before_delta->transaction_st;
+      }else{
+        std::cout<<"SERIALIZATION_ERROR"<<to_ts<<" "<<transaction_.transaction_id<<"\n";
+        return Error::SERIALIZATION_ERROR;
+      }
+    }
+    break;
+  }
+
+  //hjm end
+
+
+  // Obtain the locks by `gid` order to avoid lock cycles.
+  std::unique_lock<utils::SpinLock> guard_from(from_vertex->lock, std::defer_lock);
+  std::unique_lock<utils::SpinLock> guard_to(to_vertex->lock, std::defer_lock);
+  if (from_vertex->gid < to_vertex->gid) {
+    guard_from.lock();
+    guard_to.lock();
+  } else if (from_vertex->gid > to_vertex->gid) {
+    guard_to.lock();
+    guard_from.lock();
+  } else {
+    // The vertices are the same vertex, only lock one.
+    guard_from.lock();
+  }
+
+  if (!PrepareForWrite(&transaction_, from_vertex)) return Error::SERIALIZATION_ERROR;
+  MG_ASSERT(!from_vertex->deleted, "Invalid database state!");
+
+  if (to_vertex != from_vertex) {
+    if (!PrepareForWrite(&transaction_, to_vertex)) return Error::SERIALIZATION_ERROR;
+    MG_ASSERT(!to_vertex->deleted, "Invalid database state!");
+  }
+
+  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const interval<bool>& coverage) {
+    std::tuple<EdgeTypeId, Vertex *, EdgeRef> link(edge_type, vertex, edge_ref);
+    if (coverage.covered({vt.first,vt.second}))
+      return true;
+
+    auto it = std::find(edges->begin(), edges->end(), link);
+    if (config_.properties_on_edges) {
+      MG_ASSERT(it != edges->end(), "Invalid database state!");
+    } else if (it == edges->end()) {
+      return false;
+    }
+    std::swap(*it, *edges->rbegin());
+    edges->pop_back();
+    return true;
+  };
+
+  auto op1 = delete_edge_from_storage(to_vertex, &from_vertex->out_edges, to_coverage);
+  auto op2 = delete_edge_from_storage(from_vertex, &to_vertex->in_edges, from_coverage);
+
+  if (config_.properties_on_edges) {
+    MG_ASSERT((op1 && op2), "Invalid database state!");
+  } else {
+    MG_ASSERT((op1 && op2) || (!op1 && !op2), "Invalid database state!");
+    if (!op1 && !op2) {
+      // The edge is already deleted.
+      return std::optional<EdgeAccessor>{};
+    }
+  }
+
+  if (config_.properties_on_edges) {
+    auto *edge_ptr = edge_ref.ptr;
+    auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, Delta::RecreateObjectTag(), vt);
+    edge_ptr->deleted = true;
+    //hjm begin store edge to reconstruct
+    delta->transaction_st=ts;
+    delta->from_gid=edge_ptr->from_gid;
+    delta->to_gid=edge_ptr->to_gid;
+    //properties
+    nlohmann::json data = nlohmann::json::object();
+    auto maybe_properties = edge_ptr->properties.Properties();;
+    nlohmann::json data2 = nlohmann::json::object();
+    for (const auto &prop : maybe_properties) {
+      auto property_name = storage_->name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
+      auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+      data2[property_name] = property_value;
+    }
+    data["SP"]=data2;
+    delta->add_info=data;
+    if(prinfFlag){
+      auto prinfEdges=prinfEdge(edge_type,edge_ptr->gid.AsUint(),edge_ptr->from_gid.AsUint(),edge_ptr->to_gid.AsUint(),ts,maybe_properties);
+      transaction_.prinfEdge_.emplace_back(prinfEdges);
+    }
+    //hjm end
+  }
+
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref, vt);
+  //hjm begin
+  delta->transaction_st = from_ts;
+  transaction_.ve_changed.insert(from_vertex->gid);
+  //hjm end
+
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref, vt);
+  //hjm begin
+  delta->transaction_st = to_ts;
+  transaction_.ve_changed.insert(to_vertex->gid);
+  //hjm end
+
+  // Decrement edge count.
+  storage_->edge_count_.fetch_add(-1, std::memory_order_acq_rel);
+
+  return std::make_optional<EdgeAccessor>(edge_ref, edge_type, from_vertex, to_vertex, &transaction_,
+                                          &storage_->indices_, &storage_->constraints_, config_, true);
+}
+
 
 const std::string &Storage::Accessor::LabelToName(LabelId label) const { return storage_->LabelToName(label); }
 
