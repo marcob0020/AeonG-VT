@@ -15,7 +15,9 @@ set(utils_src_files
     thread_pool.cpp
     tsc.cpp
     uuid.cpp
-    vt_temporal.cpp)
+    vt_temporal.cpp
+        interval.cpp
+        interval.hpp)
 
 find_package(Boost REQUIRED)
 find_package(fmt REQUIRED)
