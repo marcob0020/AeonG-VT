@@ -220,6 +220,9 @@ class Storage final {
     /// @throw std::bad_alloc
     VertexAccessor CreateVertex();
 
+    /// @throw std::bad_alloc
+    VertexAccessor CreateVertex(const TemporalPeriod& vt);
+
     std::optional<history_delta::History_delta>& GetHistoryDelta(){
       return storage_->saved_history_deltas_;
     }
@@ -346,17 +349,33 @@ class Storage final {
     /// @throw std::bad_alloc
     Result<std::optional<VertexAccessor>> DeleteVertex(VertexAccessor *vertex);
 
+    /// @return Accessor to the temporal-deleted vertex if a deletion took place, std::nullopt otherwise
+    /// @throw std::bad_alloc
+    Result<std::optional<VertexAccessor>> DeleteVertex(VertexAccessor *vertex,const TemporalPeriod& vt);
+
     /// @return Accessor to the deleted vertex and deleted edges if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
     Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> DetachDeleteVertex(
         VertexAccessor *vertex);
 
+    /// @return Accessor to the temporal-deleted vertex and deleted edges if a deletion took place, std::nullopt otherwise
+    /// @throw std::bad_alloc
+    Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> DetachDeleteVertex(
+        VertexAccessor *vertex, const TemporalPeriod& vt);
+
     /// @throw std::bad_alloc
     Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type);
+
+    /// @throw std::bad_alloc
+    Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, const TemporalPeriod& vt);
 
     /// Accessor to the deleted edge if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
     Result<std::optional<EdgeAccessor>> DeleteEdge(EdgeAccessor *edge);
+
+    /// Accessor to the deleted edge if a deletion took place, std::nullopt otherwise
+    /// @throw std::bad_alloc
+    Result<std::optional<EdgeAccessor>> DeleteEdge(EdgeAccessor *edge, const TemporalPeriod& vt);
 
     const std::string &LabelToName(LabelId label) const;
     const std::string &PropertyToName(PropertyId property) const;
@@ -404,7 +423,13 @@ class Storage final {
     VertexAccessor CreateVertex(storage::Gid gid);
 
     /// @throw std::bad_alloc
+    VertexAccessor CreateVertex(storage::Gid gid, const TemporalPeriod& vt);
+
+    /// @throw std::bad_alloc
     Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, storage::Gid gid);
+
+    /// @throw std::bad_alloc
+    Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, storage::Gid gid, const TemporalPeriod& vt);
 
     Storage *storage_;
     std::shared_lock<utils::RWLock> storage_guard_;
