@@ -6,7 +6,7 @@
 #define INTERVAL_HPP
 #include "vt_temporal.hpp"
 
-
+namespace utils {
 template <typename T, typename container = std::vector<T>>
 class interval {
 private:
@@ -16,7 +16,11 @@ public:
   using Period = std::pair<utils::VTDateTime, utils::VTDateTime>;
 
   explicit interval(const container& container_interval) : _container_interval(container_interval) {}
-  interval() = default;
+  interval(): _container_interval() {
+  };
+
+  interval(const interval& other): _container_interval(other._container_interval) {}
+  interval(interval&& other) noexcept: _container_interval(std::move(other._container_interval)) {}
 
   void add(Period from_to, const T& value) {
     //TODO
@@ -45,7 +49,6 @@ public:
 
 
 };
-
-
+}
 
 #endif //INTERVAL_HPP
