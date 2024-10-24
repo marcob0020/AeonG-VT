@@ -58,6 +58,40 @@ std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View v
 
   return {exists, deleted};
 }
+
+std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View view, const TemporalPeriod& vt) {
+  bool exists = true;
+  bool deleted = false;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex->lock);
+    deleted = vertex->deleted;
+    delta = vertex->delta;
+  }
+  ApplyDeltasForRead(transaction, delta, view, vt, [&](const Delta &delta, TemporalPeriod& vt_intersect) {
+    switch (delta.action) {
+      case Delta::Action::ADD_LABEL:
+      case Delta::Action::REMOVE_LABEL:
+      case Delta::Action::SET_PROPERTY:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+      case Delta::Action::RECREATE_OBJECT: {
+        deleted = false;
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        exists = false;
+        break;
+      }
+    }
+  });
+
+  return {exists, deleted};
+}
+
 }  // namespace
 }  // namespace detail
 
@@ -93,8 +127,31 @@ std::optional<VertexAccessor> VertexAccessor::Create(Vertex *vertex, Transaction
   return VertexAccessor{vertex, transaction, indices, constraints, config};
 }
 
+std::optional<VertexAccessor> VertexAccessor::Creates(Vertex *vertex, Transaction *transaction, Indices *indices,
+                                                       Constraints *constraints, Config::Items config, View view, const TemporalPeriod& vt){
+
+  const auto [exists, deleted] = detail::IsVisible(vertex, transaction, view, vt);
+  if(!exists) return std::nullopt;
+  return VertexAccessor{vertex,transaction, indices, constraints, config};
+}
+
+
+std::optional<VertexAccessor> VertexAccessor::Create(Vertex *vertex, Transaction *transaction, Indices *indices,
+                                                       Constraints *constraints, Config::Items config, View view, const TemporalPeriod& vt) {
+  if (const auto [exists, deleted] = detail::IsVisible(vertex, transaction, view, vt); !exists || deleted) {
+    return std::nullopt;
+  }
+
+  return VertexAccessor{vertex, transaction, indices, constraints, config};
+}
+
 bool VertexAccessor::IsVisible(View view) const {
   const auto [exists, deleted] = detail::IsVisible(vertex_, transaction_, view);
+  return exists && (for_deleted_ || !deleted);
+}
+
+bool VertexAccessor::IsVisible(View view, const TemporalPeriod& vt) const {
+  const auto [exists, deleted] = detail::IsVisible(vertex_, transaction_, view, vt);
   return exists && (for_deleted_ || !deleted);
 }
 
@@ -162,6 +219,83 @@ Result<bool> VertexAccessor::AddLabel(LabelId label) {
   if (std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end()) return false;
 
   auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::RemoveLabelTag(), label);
+
+  vertex_->labels.push_back(label);
+
+  //set for aeong time
+  transaction_->v_changed.insert(vertex_->gid);
+  delta->transaction_st = ts;
+
+  UpdateOnAddLabel(indices_, label, vertex_, *transaction_);
+
+  return true;
+}
+
+Result<bool> VertexAccessor::AddLabel(LabelId label, const TemporalPeriod& vt) {
+  utils::MemoryTracker::OutOfMemoryExceptionEnabler oom_exception;
+  std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+
+  if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
+
+  if (vertex_->deleted) return Error::DELETED_OBJECT;
+
+  //set transaction set
+  auto ts=vertex_->transaction_st;
+  auto before_delta=vertex_->delta;
+  bool printf=before_delta == nullptr?true:false;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(ts >= kTransactionInitialId){
+      if(ts==transaction_->transaction_id){
+        ts=before_delta->transaction_st;
+      }else{
+        return Error::SERIALIZATION_ERROR;
+      }
+    }else{
+      vertex_->num+=1;
+      if(!MultipleAnchorFlag){//constant anchor num
+        if(vertex_->num>config_.AnchorNum){
+          vertex_->num=1;
+          // save edge to restore properties
+          if(AnchorFlag){
+            auto maybe_labels = vertex_->labels;
+            auto maybe_properties = vertex_->properties.Properties();
+            ts = before_delta->commit_timestamp;
+            transaction_->gid_anchor_vertex_[std::make_pair(vertex_->gid,ts)]=std::make_pair(maybe_properties,maybe_labels);
+          }
+        }
+      }else{
+      }
+      printf=true;
+    }
+    break;
+  }
+  if(printf&prinfFlag){
+    auto maybe_labels = vertex_->labels;
+    auto maybe_properties = vertex_->properties.Properties();
+    auto print=prinfVertex(vertex_->gid.AsUint(),ts,maybe_properties,maybe_labels);
+    transaction_->prinfVertex_.emplace_back(print);
+  }
+
+  //TODO it should not return false if it exists in a different vt?
+  if (std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end()) return false;
+
+  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::RemoveLabelTag(), label, vt);
 
   vertex_->labels.push_back(label);
 
@@ -245,6 +379,78 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label) {
   return true;
 }
 
+Result<bool> VertexAccessor::RemoveLabel(LabelId label, const TemporalPeriod& vt) {
+  std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+
+  if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
+
+  if (vertex_->deleted) return Error::DELETED_OBJECT;
+  
+  //aeong set transaction st
+  auto ts=vertex_->transaction_st;
+  auto before_delta=vertex_->delta;
+  bool printf=before_delta == nullptr?true:false;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE: 
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire); 
+      continue;
+    }  
+    ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(ts >= kTransactionInitialId){
+      if(ts==transaction_->transaction_id){//ts >= kTransactionInitialId & 
+        ts=before_delta->transaction_st;
+      }else{
+        return Error::SERIALIZATION_ERROR;
+      }
+    }else{
+      vertex_->num+=1;
+      if(vertex_->num>config_.AnchorNum){
+        vertex_->num=1;
+        if(AnchorFlag){
+          auto maybe_labels = vertex_->labels;
+          auto maybe_properties = vertex_->properties.Properties();
+           ts = before_delta->commit_timestamp;
+          transaction_->gid_anchor_vertex_[std::make_pair(vertex_->gid,ts)]=std::make_pair(maybe_properties,maybe_labels);
+        }
+      }
+      printf=true;
+    }
+    break;
+  }
+  if(printf&prinfFlag){
+    auto maybe_labels = vertex_->labels;
+    auto maybe_properties = vertex_->properties.Properties();
+    auto print=prinfVertex(vertex_->gid.AsUint(),ts,maybe_properties,maybe_labels);
+    transaction_->prinfVertex_.emplace_back(print);
+  }
+
+  //TODO check if ok even if delete does not cover the whole lifetime
+  auto it = std::find(vertex_->labels.begin(), vertex_->labels.end(), label);
+  if (it == vertex_->labels.end()) return false;
+
+  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::AddLabelTag(), label, vt);
+
+  //aeong set for transaction
+  transaction_->v_changed.insert(vertex_->gid);
+  delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
+
+  //TODO check if ok even if delete does not cover the whole lifetime
+  std::swap(*it, *vertex_->labels.rbegin());
+  vertex_->labels.pop_back();
+  return true;
+}
+
 Result<bool> VertexAccessor::HasLabel(LabelId label, View view) const {
   bool exists = true;
   bool deleted = false;
@@ -257,6 +463,54 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view) const {
     delta = vertex_->delta;
   }
   ApplyDeltasForRead(transaction_, delta, view, [&exists, &deleted, &has_label, label](const Delta &delta) {
+    switch (delta.action) {
+      case Delta::Action::REMOVE_LABEL: {
+        if (delta.label == label) {
+          MG_ASSERT(has_label, "Invalid database state!");
+          has_label = false;
+        }
+        break;
+      }
+      case Delta::Action::ADD_LABEL: {
+        if (delta.label == label) {
+          MG_ASSERT(!has_label, "Invalid database state!");
+          has_label = true;
+        }
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        exists = false;
+        break;
+      }
+      case Delta::Action::RECREATE_OBJECT: {
+        deleted = false;
+        break;
+      }
+      case Delta::Action::SET_PROPERTY:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+    }
+  });
+  if (!exists) return Error::NONEXISTENT_OBJECT;
+  if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
+  return has_label;
+}
+
+Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const TemporalPeriod& vt) const {
+  bool exists = true;
+  bool deleted = false;
+  bool has_label = false;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    has_label = std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end();
+    delta = vertex_->delta;
+  }
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &has_label, label](const Delta &delta, TemporalPeriod vt_intersect) {
     switch (delta.action) {
       case Delta::Action::REMOVE_LABEL: {
         if (delta.label == label) {
@@ -420,6 +674,85 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   return std::move(current_value);
 }
 
+Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt) {
+  utils::MemoryTracker::OutOfMemoryExceptionEnabler oom_exception;
+  std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+
+  if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
+
+  if (vertex_->deleted) return Error::DELETED_OBJECT;
+  //aeong set transaction st
+  auto ts=vertex_->transaction_st;
+  auto before_delta=vertex_->delta;
+  bool printf=before_delta == nullptr?true:false;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(ts >= kTransactionInitialId){
+      if(ts==transaction_->transaction_id){//ts >= kTransactionInitialId &
+        ts=before_delta->transaction_st;
+      }else{
+        return Error::SERIALIZATION_ERROR;
+      }
+    }else{
+      if(!MultipleAnchorFlag){//constant anchor num
+        if(vertex_->num>config_.AnchorNum){
+          vertex_->num=1;
+          if(AnchorFlag){
+            auto maybe_labels = vertex_->labels;
+            auto maybe_properties = vertex_->properties.Properties();
+            ts = before_delta->commit_timestamp;
+            transaction_->gid_anchor_vertex_[std::make_pair(vertex_->gid,ts)]=std::make_pair(maybe_properties,maybe_labels);
+          }
+        }
+      }else{
+      }
+      printf=true;
+    }
+    break;
+  }
+  if(printf&prinfFlag){
+    auto maybe_labels = vertex_->labels;
+    auto maybe_properties = vertex_->properties.Properties();
+    auto print=prinfVertex(vertex_->gid.AsUint(),ts,maybe_properties,maybe_labels);
+    transaction_->prinfVertex_.emplace_back(print);
+  }
+
+  auto current_value = vertex_->properties.GetProperty(property);
+  // We could skip setting the value if the previous one is the same to the new
+  // one. This would save some memory as a delta would not be created as well as
+  // avoid copying the value. The reason we are not doing that is because the
+  // current code always follows the logical pattern of "create a delta" and
+  // "modify in-place". Additionally, the created delta will make other
+  // transactions get a SERIALIZATION_ERROR.
+  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vt, property, current_value);
+  vertex_->properties.SetProperty(property, value);
+  vertex_->num+=1;
+
+  //aeong set for transaction
+  transaction_->v_changed.insert(vertex_->gid);
+  delta->transaction_st = vertex_->transaction_st;//ts;
+
+  //TODO may break indices...
+  UpdateOnSetProperty(indices_, property, value, vertex_, *transaction_);
+
+  return std::move(current_value);
+}
+
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties() {
   std::lock_guard<utils::SpinLock> guard(vertex_->lock);
 
@@ -492,6 +825,80 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties() {
   return std::move(properties);
 }
 
+Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(const TemporalPeriod& vt) {
+  std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+
+  if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
+
+  if (vertex_->deleted) return Error::DELETED_OBJECT;
+  //aeong set transaction st
+  auto ts=vertex_->transaction_st;
+  auto before_delta=vertex_->delta;
+  bool printf=before_delta == nullptr?true:false;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::ADD_IN_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        delta_is_edge=true;
+        break;
+      }
+      default:break;
+    }
+    if(delta_is_edge){
+      before_delta = before_delta->next.load(std::memory_order_acquire);
+      continue;
+    }
+    ts = before_delta->timestamp->load(std::memory_order_acquire);
+    if(ts >= kTransactionInitialId){
+      if(ts==transaction_->transaction_id){//ts >= kTransactionInitialId &
+        ts=before_delta->transaction_st;
+      }else{
+        return Error::SERIALIZATION_ERROR;
+      }
+    }else{
+        vertex_->num+=1;
+      if(vertex_->num>config_.AnchorNum){
+        vertex_->num=1;
+        // save edge to restore properties
+        if(AnchorFlag){
+          auto maybe_labels = vertex_->labels;
+          auto maybe_properties = vertex_->properties.Properties();
+          ts = before_delta->commit_timestamp;
+          transaction_->gid_anchor_vertex_[std::make_pair(vertex_->gid,ts)]=std::make_pair(maybe_properties,maybe_labels);
+        }
+      }
+      printf=true;
+    }
+    break;
+  }
+  if(printf&prinfFlag){
+    auto maybe_labels = vertex_->labels;
+    auto maybe_properties = vertex_->properties.Properties();
+    auto print=prinfVertex(vertex_->gid.AsUint(),ts,maybe_properties,maybe_labels);
+    transaction_->prinfVertex_.emplace_back(print);
+  }
+
+  //TODO this won't work. I need to replace Properties with an interval, at least
+  auto properties = vertex_->properties.Properties();
+  for (const auto &property : properties) {
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property.first, property.second);
+    //set for aeong
+    delta->transaction_st = ts;
+    UpdateOnSetProperty(indices_, property.first, PropertyValue(), vertex_, *transaction_);
+  }
+
+  //set for aeong
+  transaction_->v_changed.insert(vertex_->gid);
+
+  vertex_->properties.ClearProperties();
+
+  return std::move(properties);
+}
+
+##
 
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties2() {
   auto properties = vertex_->properties.Properties();
@@ -558,6 +965,52 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
   return std::move(value);
+}
+
+Result<utils::interval<PropertyValue>> VertexAccessor::GetProperty(PropertyId property, View view, const TemporalPeriod& vt) const {
+  bool exists = true;
+  bool deleted = false;
+  PropertyValue value;
+  utils::interval<PropertyValue> res;
+
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    value = vertex_->properties.GetProperty(property);
+    delta = vertex_->delta;
+  }
+
+  //TODO: make sure that the order is correct and that the interval will be correctly formed
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, TemporalPeriod vt_intersection) {
+    switch (delta.action) {
+      case Delta::Action::SET_PROPERTY: {
+        if (delta.property.key == property) {
+          //value = delta.property.value;
+          res.add({vt_intersection.first,vt_intersection.second}, delta.property.value);
+        }
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        exists = false;
+        break;
+      }
+      case Delta::Action::RECREATE_OBJECT: {
+        deleted = false;
+        break;
+      }
+      case Delta::Action::ADD_LABEL:
+      case Delta::Action::REMOVE_LABEL:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+    }
+  });
+  if (!exists) return Error::NONEXISTENT_OBJECT;
+  if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
+  return std::move(res);
 }
 
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view) const {

@@ -79,7 +79,7 @@ inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, Vie
 /// This overload takes the TemporalFilter vt as a parameter. Only matching deltas are applied
 /// Callback must consider vt(sliced)
 template <typename TCallback>
-inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, View view, const TCallback &callback, const query::TemporalFilter &vt) {
+inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, View view, const query::TemporalFilter &vt, const TCallback &callback) {
   // if the transaction is not committed, then its deltas have transaction_id for the timestamp, otherwise they have
   // its commit timestamp set.
   // This allows the transaction to see its changes even though it's committed.

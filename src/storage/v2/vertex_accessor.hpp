@@ -19,6 +19,7 @@
 #include "storage/v2/result.hpp"
 #include "storage/v2/transaction.hpp"
 #include "storage/v2/view.hpp"
+#include "utils/interval.hpp"
 
 namespace storage {
 
@@ -48,20 +49,42 @@ class VertexAccessor final {
   static std::optional<VertexAccessor> Create(Vertex *vertex, Transaction *transaction, Indices *indices,
                                               Constraints *constraints, Config::Items config, View view);
 
+  static std::optional<VertexAccessor>  Creates(Vertex *vertex, Transaction *transaction, Indices *indices,
+                                                   Constraints *constraints, Config::Items config, View view, const TemporalPeriod& vt);
+
+  static std::optional<VertexAccessor> Create(Vertex *vertex, Transaction *transaction, Indices *indices,
+                                              Constraints *constraints, Config::Items config, View view, const TemporalPeriod& vt);
+
   /// @return true if the object is visible from the current transaction
   bool IsVisible(View view) const;
+
+  /// @return true if the object is visible from the current transaction and exists in the given vt range
+  bool IsVisible(View view, const TemporalPeriod& vt) const;
 
   /// Add a label and return `true` if insertion took place.
   /// `false` is returned if the label already existed.
   /// @throw std::bad_alloc
   Result<bool> AddLabel(LabelId label);
 
+  /// Add a label with vt validity and return `true` if insertion took place.
+  /// `false` is returned if the label already existed.
+  /// @throw std::bad_alloc
+  Result<bool> AddLabel(LabelId label, const TemporalPeriod& vt);
+
   /// Remove a label and return `true` if deletion took place.
   /// `false` is returned if the vertex did not have a label already.
   /// @throw std::bad_alloc
   Result<bool> RemoveLabel(LabelId label);
 
+  /// Remove a label in a given period and return `true` if deletion took place.
+  /// `false` is returned if the vertex in that period did not have a label already.
+  /// @throw std::bad_alloc
+  Result<bool> RemoveLabel(LabelId label, const TemporalPeriod& vt);
+
   Result<bool> HasLabel(LabelId label, View view) const;
+
+  /// Returns true if label is present in the requested interval
+  Result<bool> HasLabel(LabelId label, View view, const TemporalPeriod& vt) const;
 
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
@@ -72,9 +95,17 @@ class VertexAccessor final {
   /// @throw std::bad_alloc
   Result<PropertyValue> SetProperty(PropertyId property, const PropertyValue &value);
 
+  /// Set a property value in a temporal period and return the old value.
+  /// @throw std::bad_alloc
+  Result<PropertyValue> SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt);
+
   /// Remove all properties and return the values of the removed properties.
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> ClearProperties();
+
+  /// Remove all properties in a range and return the values of the removed properties.
+  /// @throw std::bad_alloc
+  Result<std::map<PropertyId, PropertyValue>> ClearProperties(const TemporalPeriod& vt);
 
   Result<std::map<PropertyId, PropertyValue>> ClearProperties2();
   bool haslabels();
@@ -102,6 +133,9 @@ class VertexAccessor final {
 
   /// @throw std::bad_alloc
   Result<PropertyValue> GetProperty(PropertyId property, View view) const;
+
+  /// @throw std::bad_alloc
+  Result<utils::interval<PropertyValue>> GetProperty(PropertyId property, View view, const TemporalPeriod& vt) const;
 
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;
