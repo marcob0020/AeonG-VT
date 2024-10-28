@@ -12,6 +12,7 @@
 #pragma once
 
 #include <optional>
+#include <utils/interval.hpp>
 
 #include "storage/v2/edge.hpp"
 #include "storage/v2/edge_ref.hpp"
@@ -65,6 +66,9 @@ class EdgeAccessor final {
   /// @return true if the object is visible from the current transaction
   bool IsVisible(View view) const;
 
+  /// @return true if the object is visible  from the current transaction and exists in the given vt range
+  bool IsVisible(View view, const TemporalPeriod& vt) const;
+
   VertexAccessor FromVertex() const;
 
   VertexAccessor ToVertex() const;
@@ -75,15 +79,29 @@ class EdgeAccessor final {
   /// @throw std::bad_alloc
   Result<storage::PropertyValue> SetProperty(PropertyId property, const PropertyValue &value);
 
+  /// Set a property value and return the old value. The new value is valid only for the given vt
+  /// @throw std::bad_alloc
+  Result<storage::PropertyValue> SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt);
+
   /// Remove all properties and return old values for each removed property.
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> ClearProperties();
+
+  /// Remove all properties in a given temporal range and return old values for each removed property.
+  /// @throw std::bad_alloc
+  Result<std::map<PropertyId, PropertyValue>> ClearProperties(const TemporalPeriod& vt);
 
   /// @throw std::bad_alloc
   Result<PropertyValue> GetProperty(PropertyId property, View view) const;
 
   /// @throw std::bad_alloc
+  Result<utils::interval<PropertyValue>> GetProperty(PropertyId property, View view, const TemporalPeriod& vt) const;
+
+  /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;
+
+  /// @throw std::bad_alloc
+  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const TemporalPeriod& vt) const;
 
   Gid Gid() const noexcept {
     if (config_.properties_on_edges) {
