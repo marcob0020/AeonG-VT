@@ -1064,6 +1064,56 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
   return std::move(properties);
 }
 
+Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view, const TemporalPeriod& vt) const {
+  bool exists = true;
+  bool deleted = false;
+  std::map<PropertyId, PropertyValue> properties;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    properties = vertex_->properties.Properties();
+    delta = vertex_->delta;
+  }
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &properties](const Delta &delta, TemporalPeriod vt_intersection) {
+    switch (delta.action) {
+      case Delta::Action::SET_PROPERTY: {
+        auto it = properties.find(delta.property.key);
+        if (it != properties.end()) {
+          if (delta.property.value.IsNull()) {
+            // remove the property
+            properties.erase(it);
+          } else {
+            // set the value
+            it->second = delta.property.value;
+          }
+        } else if (!delta.property.value.IsNull()) {
+          properties.emplace(delta.property.key, delta.property.value);
+        }
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        exists = false;
+        break;
+      }
+      case Delta::Action::RECREATE_OBJECT: {
+        deleted = false;
+        break;
+      }
+      case Delta::Action::ADD_LABEL:
+      case Delta::Action::REMOVE_LABEL:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+    }
+  });
+  if (!exists) return Error::NONEXISTENT_OBJECT;
+  if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
+  return std::move(properties);
+}
+
 Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const std::vector<EdgeTypeId> &edge_types,
                                                           const VertexAccessor *destination) const {
   MG_ASSERT(!destination || destination->transaction_ == transaction_, "Invalid accessor!");
@@ -1144,6 +1194,87 @@ Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const std::
   return std::move(ret);
 }
 
+Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const std::vector<EdgeTypeId> &edge_types,
+                                                          const VertexAccessor *destination, const TemporalPeriod& vt) const {
+  MG_ASSERT(!destination || destination->transaction_ == transaction_, "Invalid accessor!");
+  bool exists = true;
+  bool deleted = false;
+  std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> in_edges;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    if (edge_types.empty() && !destination) {
+      in_edges = vertex_->in_edges;
+    } else {
+      for (const auto &item : vertex_->in_edges) {
+        const auto &[edge_type, from_vertex, edge] = item;
+        if (destination && from_vertex != destination->vertex_) continue;
+        if (!edge_types.empty() && std::find(edge_types.begin(), edge_types.end(), edge_type) == edge_types.end())
+          continue;
+        in_edges.push_back(item);
+      }
+    }
+    delta = vertex_->delta;
+  }
+  ApplyDeltasForRead(
+      transaction_, delta, view, vt, [&exists, &deleted, &in_edges, &edge_types, &destination](const Delta &delta, TemporalPeriod vt_intersection) {
+        switch (delta.action) {
+          case Delta::Action::ADD_IN_EDGE: {
+            if (destination && delta.vertex_edge.vertex != destination->vertex_) break;
+            if (!edge_types.empty() &&
+                std::find(edge_types.begin(), edge_types.end(), delta.vertex_edge.edge_type) == edge_types.end())
+              break;
+            // Add the edge because we don't see the removal.
+            std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{delta.vertex_edge.edge_type, delta.vertex_edge.vertex,
+                                                           delta.vertex_edge.edge};
+            auto it = std::find(in_edges.begin(), in_edges.end(), link);
+            //TODO check if it may happen
+            MG_ASSERT(it == in_edges.end(), "Invalid database state!");
+            in_edges.push_back(link);
+            break;
+          }
+          case Delta::Action::REMOVE_IN_EDGE: {
+            if (destination && delta.vertex_edge.vertex != destination->vertex_) break;
+            if (!edge_types.empty() &&
+                std::find(edge_types.begin(), edge_types.end(), delta.vertex_edge.edge_type) == edge_types.end())
+              break;
+            // Remove the label because we don't see the addition.
+            std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{delta.vertex_edge.edge_type, delta.vertex_edge.vertex,
+                                                           delta.vertex_edge.edge};
+            auto it = std::find(in_edges.begin(), in_edges.end(), link);
+            //TODO check if it may happen
+            MG_ASSERT(it != in_edges.end(), "Invalid database state!");
+            std::swap(*it, *in_edges.rbegin());
+            in_edges.pop_back();
+            break;
+          }
+          case Delta::Action::DELETE_OBJECT: {
+            exists = false;
+            break;
+          }
+          case Delta::Action::RECREATE_OBJECT: {
+            deleted = false;
+            break;
+          }
+          case Delta::Action::ADD_LABEL:
+          case Delta::Action::REMOVE_LABEL:
+          case Delta::Action::SET_PROPERTY:
+          case Delta::Action::ADD_OUT_EDGE:
+          case Delta::Action::REMOVE_OUT_EDGE:
+            break;
+        }
+      });
+  if (!exists) return Error::NONEXISTENT_OBJECT;
+  if (deleted) return Error::DELETED_OBJECT;
+  std::vector<EdgeAccessor> ret;
+  ret.reserve(in_edges.size());
+  for (const auto &item : in_edges) {
+    const auto &[edge_type, from_vertex, edge] = item;
+    ret.emplace_back(edge, edge_type, from_vertex, vertex_, transaction_, indices_, constraints_, config_);
+  }
+  return std::move(ret);
+}
 
 Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const std::vector<EdgeTypeId> &edge_types,
                                                            const VertexAccessor *destination) const {
@@ -1224,6 +1355,89 @@ Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const std:
   }
   return std::move(ret);
 }
+
+Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const std::vector<EdgeTypeId> &edge_types,
+                                                           const VertexAccessor *destination, const TemporalPeriod& vt) const {
+  MG_ASSERT(!destination || destination->transaction_ == transaction_, "Invalid accessor!");
+  bool exists = true;
+  bool deleted = false;
+  std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> out_edges;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    if (edge_types.empty() && !destination) {
+      out_edges = vertex_->out_edges;
+    } else {
+      for (const auto &item : vertex_->out_edges) {
+        const auto &[edge_type, to_vertex, edge] = item;
+        if (destination && to_vertex != destination->vertex_) continue;
+        if (!edge_types.empty() && std::find(edge_types.begin(), edge_types.end(), edge_type) == edge_types.end())
+          continue;
+        out_edges.push_back(item);
+      }
+    }
+    delta = vertex_->delta;
+  }
+  ApplyDeltasForRead(
+      transaction_, delta, view, vt, [&exists, &deleted, &out_edges, &edge_types, &destination](const Delta &delta, TemporalPeriod vt_intersection) {
+        switch (delta.action) {
+          case Delta::Action::ADD_OUT_EDGE: {
+            if (destination && delta.vertex_edge.vertex != destination->vertex_) break;
+            if (!edge_types.empty() &&
+                std::find(edge_types.begin(), edge_types.end(), delta.vertex_edge.edge_type) == edge_types.end())
+              break;
+            // Add the edge because we don't see the removal.
+            std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{delta.vertex_edge.edge_type, delta.vertex_edge.vertex,
+                                                           delta.vertex_edge.edge};
+            auto it = std::find(out_edges.begin(), out_edges.end(), link);
+            //TODO check if it may happen
+            MG_ASSERT(it == out_edges.end(), "Invalid database state!");
+            out_edges.push_back(link);
+            break;
+          }
+          case Delta::Action::REMOVE_OUT_EDGE: {
+            if (destination && delta.vertex_edge.vertex != destination->vertex_) break;
+            if (!edge_types.empty() &&
+                std::find(edge_types.begin(), edge_types.end(), delta.vertex_edge.edge_type) == edge_types.end())
+              break;
+            // Remove the label because we don't see the addition.
+            std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{delta.vertex_edge.edge_type, delta.vertex_edge.vertex,
+                                                           delta.vertex_edge.edge};
+            auto it = std::find(out_edges.begin(), out_edges.end(), link);
+            //TODO check if it may happen
+            MG_ASSERT(it != out_edges.end(), "Invalid database state!");
+            std::swap(*it, *out_edges.rbegin());
+            out_edges.pop_back();
+            break;
+          }
+          case Delta::Action::DELETE_OBJECT: {
+            exists = false;
+            break;
+          }
+          case Delta::Action::RECREATE_OBJECT: {
+            deleted = false;
+            break;
+          }
+          case Delta::Action::ADD_LABEL:
+          case Delta::Action::REMOVE_LABEL:
+          case Delta::Action::SET_PROPERTY:
+          case Delta::Action::ADD_IN_EDGE:
+          case Delta::Action::REMOVE_IN_EDGE:
+            break;
+        }
+      });
+  if (!exists) return Error::NONEXISTENT_OBJECT;
+  if (deleted) return Error::DELETED_OBJECT;
+  std::vector<EdgeAccessor> ret;
+  ret.reserve(out_edges.size());
+  for (const auto &item : out_edges) {
+    const auto &[edge_type, to_vertex, edge] = item;
+    ret.emplace_back(edge, edge_type, vertex_, to_vertex, transaction_, indices_, constraints_, config_);
+  }
+  return std::move(ret);
+}
+
 
 Result<size_t> VertexAccessor::InDegree(View view) const {
   bool exists = true;

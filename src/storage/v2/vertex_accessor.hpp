@@ -141,6 +141,10 @@ class VertexAccessor final {
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;
 
   /// @throw std::bad_alloc
+  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const TemporalPeriod& vt) const;
+
+
+  /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
   ///        std::vector::max_size().
   Result<std::vector<EdgeAccessor>> InEdges(View view, const std::vector<EdgeTypeId> &edge_types = {},
@@ -149,8 +153,20 @@ class VertexAccessor final {
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
   ///        std::vector::max_size().
+  Result<std::vector<EdgeAccessor>> InEdges(View view, const std::vector<EdgeTypeId> &edge_types = {},
+                                            const VertexAccessor *destination = nullptr, const TemporalPeriod& vt) const;
+
+  /// @throw std::bad_alloc
+  /// @throw std::length_error if the resulting vector exceeds
+  ///        std::vector::max_size().
   Result<std::vector<EdgeAccessor>> OutEdges(View view, const std::vector<EdgeTypeId> &edge_types = {},
                                              const VertexAccessor *destination = nullptr) const;
+
+  /// @throw std::bad_alloc
+  /// @throw std::length_error if the resulting vector exceeds
+  ///        std::vector::max_size().
+  Result<std::vector<EdgeAccessor>> OutEdges(View view, const std::vector<EdgeTypeId> &edge_types = {},
+                                             const VertexAccessor *destination = nullptr, const TemporalPeriod& vt) const;
 
   Result<size_t> InDegree(View view) const;
 
