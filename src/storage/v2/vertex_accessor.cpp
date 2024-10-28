@@ -1011,6 +1011,7 @@ Result<utils::interval<PropertyValue>> VertexAccessor::GetProperty(PropertyId pr
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
   return std::move(res);
+
 }
 
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view) const {
