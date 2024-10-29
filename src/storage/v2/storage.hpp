@@ -256,6 +256,7 @@ class Storage final {
       auto key=std::make_tuple(gid,c_ts,c_te);
       storage_->all_edge[key].emplace_back(new HistoryEdge(edge),tt_ts, tt_te);
     }
+
     bool FindHistoryEdgeFlag(uint64_t gid,uint64_t c_ts,uint64_t c_te){
       auto key=std::make_tuple(gid,c_ts,c_te);
       if(storage_->all_edge_flag.count(key)==0){
@@ -263,12 +264,12 @@ class Storage final {
       }
       return true;
     }
+
     void saveHistoryEdgeFlag(uint64_t gid,uint64_t c_ts,uint64_t c_te){
       auto key=std::make_tuple(gid,c_ts,c_te);
       storage_->all_edge_flag.insert(key);
     }
 
-    
     std::optional<std::list<storage::HistoryVertex*>> FindHistoryVertex(uint64_t gid,uint64_t c_ts,uint64_t c_te){
       std::list<std::tuple<storage::HistoryVertex*,uint64_t,uint64_t>> vertices;
       auto key=std::make_tuple(gid,c_ts,c_te);
@@ -285,11 +286,10 @@ class Storage final {
     
     bool FindHistoryVertexFlag(uint64_t gid,uint64_t c_ts,uint64_t c_te){
       auto key=std::make_tuple(gid,c_ts,c_te);
-      if(storage_->all_vertex_flag.count(key)==0){
-        return false;
-      }
-      return true;
+
+      return storage_->all_vertex_flag.count(key)==0;
     }
+
     void saveHistoryVertexFlag(uint64_t gid,uint64_t c_ts,uint64_t c_te){
       auto key=std::make_tuple(gid,c_ts,c_te);
       storage_->all_vertex_flag.insert(key);

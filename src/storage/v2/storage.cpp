@@ -43,9 +43,9 @@
 #include "utils/spin_lock.hpp"
 #include "utils/stat.hpp"
 #include "utils/uuid.hpp"
+#include <utils/interval.hpp>
 
 /// REPLICATION ///
-#include <utils/interval.hpp>
 
 #include "storage/v2/replication/replication_client.hpp"
 #include "storage/v2/replication/replication_server.hpp"
@@ -869,8 +869,8 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
 
   if (!vertex_ptr->in_edges.empty() || !vertex_ptr->out_edges.empty()) return Error::VERTEX_HAS_EDGES;
   //hjm begin set transaction st
-  auto ts=vertex_ptr->transaction_st;
-  auto before_delta=vertex_ptr->delta;
+  uint64_t ts=vertex_ptr->transaction_st;
+  Delta* before_delta=vertex_ptr->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
     switch (before_delta->action) {
@@ -899,7 +899,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     break;
   }
   //hjm end
-  auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag());
+  Delta* delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag());
   vertex_ptr->deleted = true;
 
   //hjm begin
@@ -990,7 +990,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
   //save vertex to restore
   nlohmann::json data = nlohmann::json::object();
   //labels
-  auto maybe_labels = vertex_ptr->labels;
+  std::vector<LabelId> maybe_labels = vertex_ptr->labels;
   auto add_labels=std::vector<std::pair<std::string,std::string>>();
   for (const auto &label : maybe_labels) {
     add_labels.emplace_back("AL",storage_->name_id_mapper_.IdToName(label.AsUint()));//name_id_mapper_.IdToName(label.AsUint())
@@ -998,7 +998,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
   data["L"] =add_labels;
 
   //properties
-  auto maybe_properties = vertex_ptr->properties.Properties();;
+  std::map<PropertyId,PropertyValue> maybe_properties = vertex_ptr->properties.Properties();;
   nlohmann::json data2 = nlohmann::json::object();
   for (const auto &prop : maybe_properties) {
     auto property_name = storage_->name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
@@ -2930,8 +2930,8 @@ void Storage::CollectGarbage() {
     std::list<std::tuple<Gid,uint64_t,uint64_t>> saved_gids;
 
     for (Delta &a : transaction->deltas){
-      auto start=a.transaction_st;
-      auto commit=a.commit_timestamp;
+      uint64_t start=a.transaction_st;
+      uint64_t commit=a.commit_timestamp;
       if(a.transaction_st!=a.commit_timestamp){
         saved_history_deltas_->SaveDelta(a.gid,a.to_gid,start,commit,a,name_id_mapper_);
         saved_gids.emplace_back(a.gid,a.transaction_st,a.commit_timestamp);
@@ -2940,31 +2940,35 @@ void Storage::CollectGarbage() {
 
     std::map<std::string, std::string> gid_anchor_all_;
     // std::cout<<"commit after:"<<transaction->transaction_id<<" "<<transaction->gid_anchor_edge_.size()<<" "<<transaction->gid_anchor_all_.size()<<"\n";
-    for(auto [key,maybe_properties]:transaction->gid_anchor_edge_){
-      auto gid=key.first;
-      auto ts=key.second;
+    for(const auto& [key,maybe_properties]:transaction->gid_anchor_edge_){
+      Gid gid=key.first;
+      uint64_t ts=key.second;
       nlohmann::json data = nlohmann::json::object();
       nlohmann::json data2 = nlohmann::json::object();
-      for (const auto &prop : maybe_properties) {
-        auto property_name = name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
-        auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+
+      for (const auto &[prop_id, prop_value] : maybe_properties) {
+        const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
+        auto property_value = SerializePropertyValue(prop_value);//query::serialization::
         data2[property_name] = property_value;
       }
+
       data["SP"]=data2;
-      auto prefix=saved_history_deltas_->getPrefix(gid,ts,false);
+      auto prefix=history_delta::HistoryDelta::getPrefix(gid,ts,false);
       gid_anchor_all_[prefix]=data.dump();
     }
 
-    for(auto [key,values]:transaction->gid_anchor_vertex_){
-      auto gid=key.first;
-      auto ts=key.second;
+    for(const auto& [key,values]:transaction->gid_anchor_vertex_){
+      Gid gid=key.first;
+      uint64_t ts=key.second;
       nlohmann::json data = nlohmann::json::object();
-      auto maybe_properties=values.first;
-      auto maybe_labels=values.second;
+
+      const std::map<PropertyId,PropertyValue>& maybe_properties=values.first;
+      const std::vector<LabelId>& maybe_labels=values.second;
       nlohmann::json data2 = nlohmann::json::object();
-      for (const auto &prop : maybe_properties) {
-        auto property_name = name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
-        auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+
+      for (const auto &[prop_id, prop_value] : maybe_properties) {
+        const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
+        auto property_value = SerializePropertyValue(prop_value);//query::serialization::
         data2[property_name] = property_value;
       }
       data["SP"]=data2;
@@ -2973,8 +2977,10 @@ void Storage::CollectGarbage() {
       for (const auto &label : maybe_labels) {
         add_labels.emplace_back("AL",name_id_mapper_.IdToName(label.AsUint()));//name_id_mapper_.IdToName(label.AsUint())
       }
+
       data["L"] =add_labels;
-      auto prefix=saved_history_deltas_->getPrefix(gid,ts,true);
+
+      std::string prefix=saved_history_deltas_->getPrefix(gid,ts,true);
       gid_anchor_all_[prefix]=data.dump();
     }
     
@@ -2987,41 +2993,48 @@ void Storage::CollectGarbage() {
       // auto t_ts=key.t_ts_;
       std::map<PropertyId, PropertyValue> maybe_properties=key.props_;
       std::string props="";
-      for (const auto &prop : maybe_properties) {
-        auto property_name = name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
-        auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+      for (const auto &[prop_id, prop_value] : maybe_properties) {
+        const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
+        auto property_value = SerializePropertyValue(prop_value);//query::serialization::
         if(props=="")props="r."+property_name+"="+property_value.dump();
         else props+=",r."+property_name+"="+property_value.dump();
       }
-      auto label=name_id_mapper_.IdToName(key.edge_type_.AsUint());
-      auto gid=std::to_string(key.gid_);
-      auto print_fgid=std::to_string(f_gid);//+":"+std::to_string(f_ts);
-      auto print_tgid=std::to_string(t_gid);//+":"+std::to_string(t_ts);
-      auto print_ts=std::to_string(ts);
-      auto write_string=gid+"####"+print_fgid+"####"+print_tgid+"####"+print_ts+"####"+label+"####"+props+"\n";
+
+      const std::string& label=name_id_mapper_.IdToName(key.edge_type_.AsUint());
+      std::string gid=std::to_string(key.gid_);
+      std::string print_fgid=std::to_string(f_gid);//+":"+std::to_string(f_ts);
+      std::string print_tgid=std::to_string(t_gid);//+":"+std::to_string(t_ts);
+      std::string print_ts=std::to_string(ts);
+      std::string write_string=gid+"####"+print_fgid+"####"+print_tgid+"####"+print_ts+"####"+label+"####"+props+"\n";
       ofs_edge<<write_string;
     }
    
-    for(auto key:transaction->prinfVertex_){
-      auto gid=key.gid_;
+    for(const prinfVertex& key:transaction->prinfVertex_){
+      uint64_t gid=key.gid_;
       uint64_t ts=key.tt_ts_;
-      auto maybe_labels=key.labels_;
+      const std::vector<LabelId>& maybe_labels=key.labels_;
       std::string labels="";
+
       for (const auto &label : maybe_labels) {
-        auto label_name=name_id_mapper_.IdToName(label.AsUint());
+        const std::string& label_name=name_id_mapper_.IdToName(label.AsUint());
+
         if(labels=="") labels=label_name;
         else labels+=":"+label_name;
       }
-      std::map<PropertyId, PropertyValue> maybe_properties=key.props_;
+
+      const std::map<PropertyId, PropertyValue>& maybe_properties=key.props_;
       std::string props="";
-      for (const auto &prop : maybe_properties) {
-        auto property_name = name_id_mapper_.IdToName(prop.first.AsUint());//delta.property.key.AsUint();//
-        auto property_value = SerializePropertyValue(prop.second);//query::serialization::
+
+      for (const auto &[prop_id, prop_value] : maybe_properties) {
+        const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
+        auto property_value = SerializePropertyValue(prop_value);//query::serialization::
+
         if(props=="")props="r."+property_name+"="+property_value.dump();
         else props+=",r."+property_name+"="+property_value.dump();
       }
-      auto print_key1=std::to_string(gid)+":"+std::to_string(ts);
-      auto write_string=std::to_string(gid)+"####"+std::to_string(ts)+"####"+labels+"####"+props+"\n";
+
+      std::string print_key1=std::to_string(gid)+":"+std::to_string(ts);
+      std::string write_string=std::to_string(gid)+"####"+std::to_string(ts)+"####"+labels+"####"+props+"\n";
       ofs_vertex<<write_string;
     }
     
@@ -3221,8 +3234,9 @@ void Storage::CollectGarbage() {
       while (!garbage_vertices_.empty()) {
         MG_ASSERT(vertex_acc.remove(garbage_vertices_.front().second), "Invalid database state!");
         // hjm begin 
-        auto gid=garbage_vertices_.front().second.AsUint();
+        uint64_t gid=garbage_vertices_.front().second.AsUint();
         auto it = std::find(hjm_deleted_vertices_.begin(), hjm_deleted_vertices_.end(), gid);
+
         if (it != hjm_deleted_vertices_.end()) {
           std::swap(*it, hjm_deleted_vertices_.back());
           hjm_deleted_vertices_.pop_back();
@@ -3234,7 +3248,7 @@ void Storage::CollectGarbage() {
       while (!garbage_vertices_.empty() && garbage_vertices_.front().first < oldest_active_start_timestamp) {
         MG_ASSERT(vertex_acc.remove(garbage_vertices_.front().second), "Invalid database state!");
         // hjm begin 
-        auto gid=garbage_vertices_.front().second.AsUint();
+        uint64_t gid=garbage_vertices_.front().second.AsUint();
         auto it = std::find(hjm_deleted_vertices_.begin(), hjm_deleted_vertices_.end(), gid);
         if (it != hjm_deleted_vertices_.end()) {
           std::swap(*it, hjm_deleted_vertices_.back());
