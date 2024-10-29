@@ -76,8 +76,8 @@
   }
 
 namespace history_delta{
-extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,std::string type);
-extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,std::string types_);
+extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type);
+extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType types_);
 extern  std::vector<std::string> splits(const std::string &str, const std::string &pattern);
 };
 
@@ -385,7 +385,7 @@ VertexAccessor &CreateExpand::CreateExpandCursor::OtherVertex(Frame &frame, Exec
   }
 }
 
-bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::historyContext &historyContext_,std::list<TypedValue> &history_add_,ExecutionContext &context,bool edge_expand){
+bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::HistoryContext &historyContext_,std::list<TypedValue> &history_add_,ExecutionContext &context,bool edge_expand){
     auto gid=current_vertex_.Gid().AsUint();
     auto obj_ts=current_vertex_.transaction_st();
     auto obj_te=current_vertex_.tt_te();
@@ -404,7 +404,7 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::hist
     if(!delete_flag){
         auto values=TypedValue(current_vertex_);
         history_add_.emplace_back(values);
-        if(historyContext_.types=="as of"){
+        if(historyContext_.types==TemporalQueryType::AS_OF){
           return delete_flag;
         }
     }
@@ -434,7 +434,7 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::hist
     return delete_flag;
 }
 
-bool addHistoryVertex2(query::VertexAccessor &current_vertex_,history_delta::historyContext &historyContext_,history_delta::historyContext &historyContext2,TypedValue current_edge,std::list<std::pair<TypedValue,TypedValue>> &history_add_,ExecutionContext &context,bool edge_expand){
+bool addHistoryVertex2(query::VertexAccessor &current_vertex_,history_delta::HistoryContext &historyContext_,history_delta::HistoryContext &historyContext2,TypedValue current_edge,std::list<std::pair<TypedValue,TypedValue>> &history_add_,ExecutionContext &context,bool edge_expand){
   auto gid=current_vertex_.Gid().AsUint();
   auto obj_ts=current_vertex_.transaction_st();
   auto obj_te=current_vertex_.tt_te();
@@ -494,7 +494,7 @@ class ScanAllCursor : public Cursor {
         auto te=(uint64_t)(*context.addition_right);
         historyContext_.c_ts=ts;//ts
         historyContext_.c_te=te;//ts
-        historyContext_.types=ts==te?"as of":"from to";
+        historyContext_.types= ts==te? TemporalQueryType::AS_OF : TemporalQueryType::FROM_TO;
         count++;
       }
 
@@ -567,7 +567,7 @@ class ScanAllCursor : public Cursor {
   std::optional<decltype(vertices_.value().begin())> vertices_it_;
   const char *op_name_;
   int count;
-  history_delta::historyContext historyContext_;
+  history_delta::HistoryContext historyContext_;
   std::list<storage::HistoryVertex*> history_add_;
   std::list<TypedValue> history_add;
 };
@@ -970,7 +970,7 @@ bool check_edges(std::vector<storage::EdgeTypeId> edge_types,storage::EdgeTypeId
 }
 
 
-void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current_vertex,uint64_t obj_ts,uint64_t obj_te,TypedValue current_edge,std::list<std::pair<TypedValue,TypedValue>> &history_add_,history_delta::historyContext &historyContext_) {
+void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current_vertex,uint64_t obj_ts,uint64_t obj_te,TypedValue current_edge,std::list<std::pair<TypedValue,TypedValue>> &history_add_,history_delta::HistoryContext &historyContext_) {
   //加入数据库中的顶点
   auto gid=current_vertex.Gid().AsUint();
   auto tt_ts=current_vertex.transaction_st();//uint64_t transaction_st
@@ -979,10 +979,10 @@ void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current
   if(tt_ts<=obj_te&&obj_ts<=tt_te){//节点 边 &obj_ts<=tt_te
     if(history_delta::TemporalCheck(tt_ts,tt_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){////判断是否需要删除当前数据库的节点
       history_add_.emplace_back(current_edge,vertex);
-      if(historyContext_.types=="as of") return;
+      if(historyContext_.types== TemporalQueryType::AS_OF) return;
     }
   }
-  history_delta::historyContext historyContext2;
+  history_delta::HistoryContext historyContext2;
   historyContext2.c_ts=fmax(obj_ts,historyContext_.c_ts);//ts
   historyContext2.c_te=fmin(obj_te,historyContext_.c_te);//ts
   historyContext2.types=historyContext_.types;
@@ -990,7 +990,7 @@ void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current
   return;
 };
 
-void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t current_v_te,history_delta::historyContext &historyContext_,ExecutionContext &context,EdgeAtom::Direction direction,std::list<std::pair<TypedValue,TypedValue>> &history_add_){
+void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t current_v_te,history_delta::HistoryContext &historyContext_,ExecutionContext &context,EdgeAtom::Direction direction,std::list<std::pair<TypedValue,TypedValue>> &history_add_){
   auto gid=current_edge_.Gid().AsUint();
   auto obj_ts=current_edge_.transaction_st();//uint64_t transaction_st
   auto obj_te=(uint64_t)std::numeric_limits<int64_t>::max();//std::numeric_limits<uint64_t>::max();
@@ -1015,7 +1015,7 @@ void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t cu
   }
   
   //如果不需要删除当前节点，并且类型是as of,则直接返回 不需要遍历历史数据
-  if(!delete_flag&historyContext_.types=="as of"){
+  if(!delete_flag&historyContext_.types==TemporalQueryType::AS_OF){
     context.db_accessor->saveHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
     return ;
   }
@@ -1038,7 +1038,7 @@ void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t cu
  * @param history_add_ 
  */
 
-void addHistoryDeleteEdges(uint64_t vertex_gid,std::vector<storage::EdgeTypeId> edge_types,uint64_t current_v_ts,uint64_t current_v_te,history_delta::historyContext &historyContext_,ExecutionContext &context,EdgeAtom::Direction direction,std::list<std::pair<TypedValue,TypedValue>> &history_add_){
+void addHistoryDeleteEdges(uint64_t vertex_gid,std::vector<storage::EdgeTypeId> edge_types,uint64_t current_v_ts,uint64_t current_v_te,history_delta::HistoryContext &historyContext_,ExecutionContext &context,EdgeAtom::Direction direction,std::list<std::pair<TypedValue,TypedValue>> &history_add_){
   //数据库中未被删除的边 TODO unwrite egdes
   //获取kv中被删除的所有边 ve:
   auto deleted_edges_vec=context.db_accessor->GetHistoryDelta()->GetDeleteEdgeInfo(historyContext_.c_ts,historyContext_.c_te,historyContext_.types,vertex_gid);
@@ -1410,7 +1410,7 @@ class ExpandVariableCursor : public Cursor {
         auto te=(uint64_t)(*context.addition_right);
         historyContext_.c_ts=ts;//ts
         historyContext_.c_te=te;//ts
-        historyContext_.types=(ts==te?"as of":"from to");
+        historyContext_.types=(ts==te? TemporalQueryType::AS_OF : TemporalQueryType::FROM_TO);
         count++;
       }
       while (true) {
@@ -1509,7 +1509,7 @@ class ExpandVariableCursor : public Cursor {
   utils::pmr::vector<decltype(edges_.begin()->begin())> edges_it_;
 
 
-  history_delta::historyContext historyContext_;
+  history_delta::HistoryContext historyContext_;
   std::list<std::pair<TypedValue,TypedValue>> history_add_;
   uint64_t append_size=0;
   int count;

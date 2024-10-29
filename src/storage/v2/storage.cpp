@@ -593,7 +593,7 @@ bool Storage::ReclaimHistoryRentention(const std::chrono::milliseconds &retentio
   return saved_history_deltas_->RemoveOldHistory(retention_period);
 }
 
-storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const storage::HistoryVertex vertex_,nlohmann::json gid_delta_,history_delta::historyContext &historyContext_){
+storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const storage::HistoryVertex vertex_,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_){
   //properties
   auto maybe_labels= vertex_.labels;
   auto maybe_properties=vertex_.properties;
@@ -619,7 +619,7 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const storag
 }
 
 
-storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::historyContext &historyContext_){
+storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_){
   //properties
   auto deltas=another.vertex_->delta;
   auto maybe_properties=another.vertex_->properties.Properties();
@@ -645,7 +645,7 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const Vertex
 }
 
 
-storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & maybe_props,history_delta::historyContext& historyContext_){
+storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & maybe_props,history_delta::HistoryContext& historyContext_){
   auto deltas=another.vertex_->delta;
   //Current info
   auto maybe_labels=another.vertex_->labels;
@@ -2071,7 +2071,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   }
 
   auto from_ts=from_vertex->ve_tt_ts;
-  interval<bool> from_coverage; //todo
+  utils::interval<bool> from_coverage; //todo
   auto before_delta=from_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -2102,7 +2102,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   }
 
   auto to_ts=to_vertex->ve_tt_ts;
-  interval<bool> to_coverage; //todo
+  utils::interval<bool> to_coverage; //todo
   before_delta=to_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -2157,7 +2157,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     MG_ASSERT(!to_vertex->deleted, "Invalid database state!");
   }
 
-  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const interval<bool>& coverage) {
+  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const utils::interval<bool>& coverage) {
     std::tuple<EdgeTypeId, Vertex *, EdgeRef> link(edge_type, vertex, edge_ref);
     if (coverage.covered({vt.first,vt.second}))
       return true;

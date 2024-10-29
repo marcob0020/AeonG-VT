@@ -874,7 +874,7 @@ public:
 
     bool InitEdges(Frame &, ExecutionContext &);
     int count;
-    history_delta::historyContext historyContext_;
+    history_delta::HistoryContext historyContext_;
     std::list<std::pair<query::TypedValue, query::TypedValue>> history_add_;
     bool InitHistoryEdges(Frame &, ExecutionContext &);
     void InitHistoryEdgesByCurrentVertex(Frame &frame,
@@ -1125,7 +1125,7 @@ private:
     const Filter &self_;
     const UniqueCursorPtr input_cursor_;
     std::list<TypedValue> history_add_;
-    history_delta::historyContext historyContext_;
+    history_delta::HistoryContext historyContext_;
     int count;
   };
 };

@@ -10,7 +10,8 @@ namespace query{
     enum class TemporalQueryType {
       NONE = 0,
       AS_OF,
-      FROM_TO
+      FROM_TO,
+      BETWEEN_AND
     };
 
     inline std::ostream &operator<<(std::ostream &os, const TemporalQueryType &tqt) {
@@ -23,6 +24,9 @@ namespace query{
       break;
       case TemporalQueryType::AS_OF:
         os << "AS_OF";
+      break;
+      case TemporalQueryType::BETWEEN_AND:
+        os << "BETWEEN_AND";
       break;
     }
     return os;
@@ -44,6 +48,8 @@ namespace query{
             return t2 > first && first >= t1;
           case TemporalQueryType::FROM_TO:
             return t1 < second && t2 > first;
+          case TemporalQueryType::BETWEEN_AND:
+            return t1 <= second && t2 > first;
         }
         return false;
       }

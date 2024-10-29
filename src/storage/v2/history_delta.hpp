@@ -11,38 +11,40 @@
 #include "storage/v2/name_id_mapper.hpp"
 #include "storage/v2/delta.hpp"
 #include <json/json.hpp>
+#include <query/temporal_filter.hpp>
 
 namespace history_delta {
 
+using kv_key = std::pair<uint64_t,uint64_t>;
 
-struct historyContext{
-  std::map<uint64_t,std::vector<nlohmann::json>> fiter_history_datas_;//kv store中筛选的历史数据
-  std::map<uint64_t,nlohmann::json> fiter_history_delete;//kv store中筛选的被删除的节点信息
-  std::map<std::pair<uint64_t,uint64_t>,storage::Vertex*> all_vertex_;//历史数据+现有数据的集合map gid,transaction_ts vertex
-  uint64_t c_ts;//约束事务开始时间
-  uint64_t c_te;//约束事务结束时间
-  std::string types;//约束的类型
+struct HistoryContext{
+  std::map<uint64_t,std::vector<nlohmann::json>> fiter_history_datas_; //data filtered from the KVStore
+  std::map<uint64_t,nlohmann::json> fiter_history_delete; //data deleted from the KVStore
+  std::map<kv_key,storage::Vertex*> all_vertex_; //historical data map (gid,ts) -> Vertex    历史数据+现有数据的集合map gid,transaction_ts vertex
+  uint64_t c_ts; //TT start constraint
+  uint64_t c_te; //TT end constraint
+  query::TemporalQueryType types; //type of constraint
 };
 
-struct historyContextOnce{
+struct HistoryContextOnce{
     std::vector<storage::LabelId> labels;
-    std::vector<std::pair<uint64_t,uint64_t>> labels_tt;
+    std::vector<kv_key> labels_tt;
     std::map<storage::PropertyId, std::tuple<storage::PropertyValue,uint64_t,uint64_t>> props_tt;
     std::vector<storage::LabelId> remove_labels;
 };
 
-class History_delta final {
+class HistoryDelta final {
  public:
 
-   explicit History_delta(const std::string &storage_directory);
+   explicit HistoryDelta(const std::string &storage_directory);
 
-   explicit History_delta(const std::string &storage_directory,bool realTimeFlag);
+   explicit HistoryDelta(const std::string &storage_directory,bool realTimeFlag);
 
   void GetDelta(const std::string &gid_name) const;
 
-  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,std::string type);
-  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(uint64_t c_ts,uint64_t c_te,std::string type,uint64_t gid);
-  std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,std::string type,uint64_t gid);
+  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type);
+  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid);
+  std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid);
   void GetTimeTableAll();
   void SaveDeltaAll();
   void SaveAnchorAll(std::map<std::string, std::string> &value);
@@ -56,25 +58,28 @@ class History_delta final {
 
   bool HasDeltas() const;
 
-  std::string getPrefix(storage::Gid gid,const uint64_t start,bool vertex);
+  static std::string getPrefix(storage::Gid gid,const uint64_t start,bool vertex);
 
   bool RemoveOldHistory(const std::chrono::milliseconds &retention_period);
 
  private:
   bool realTimeFlagConstant=false;
-  //hash index 用来存储object的min_ts max_te
-  std::map<uint64_t,std::pair<uint64_t,uint64_t>> vertex_time_table_;//存储顶点的id，历史开始时间，历史结束时间
-  std::map<uint64_t,std::pair<uint64_t,uint64_t>> edge_time_table_;//存储边的id，历史开始时间，历史结束时间
-  //hash index 只存储当前事务
-  std::map<uint64_t,std::pair<uint64_t,uint64_t>> vertex_time_tmp_;//存储顶点的id，历史开始时间，历史结束时间
-  std::map<uint64_t,std::pair<uint64_t,uint64_t>> edge_time_tmp_;//存储边的id，历史开始时间，历史结束时间
+
+  //hash index used to store objects from min_ts max_te
+  std::map<uint64_t,kv_key> vertex_time_table_;//Store the vertex id, the historical start time, and the historical end time
+  std::map<uint64_t,kv_key> edge_time_table_;//Store the edge id, historical start time, and historical end time
+
+  //hash index stores for the current transaction only
+  std::map<uint64_t,kv_key> vertex_time_tmp_;//Store the vertex id, the historical start time, and the historical end time
+  std::map<uint64_t,kv_key> edge_time_tmp_;//Store the edge id, historical start time, and historical end time
+
   //gid,delta-num: <json>
   std::map<uint64_t,std::pair<int,nlohmann::json>> vertex_anchor_;
   std::list<std::map<std::string, std::string>> edge_anchor_;
 
   kvstore::KVStore storage_;
-  // std::map<uint64_t,uint64_t> before_gid_commit_;
+
   std::map<std::tuple<std::string,uint64_t,uint64_t>, nlohmann::json> gid_delta_delta_;//prefix,gid,commit_te
   std::map<std::string, nlohmann::json> gid_delta_;//save the same actions of one transaction
 };
-}  // namespace auth
+}  // namespace history_delta

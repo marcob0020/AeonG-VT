@@ -223,12 +223,12 @@ class Storage final {
     /// @throw std::bad_alloc
     VertexAccessor CreateVertex(const TemporalPeriod& vt);
 
-    std::optional<history_delta::History_delta>& GetHistoryDelta(){
+    std::optional<history_delta::HistoryDelta>& GetHistoryDelta(){
       return storage_->saved_history_deltas_;
     }
-    storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::historyContext& historyContext_);
-    storage::HistoryVertex CreateHistoryVertexFromKV(const storage::HistoryVertex ,nlohmann::json gid_delta_,history_delta::historyContext &historyContext_);
-    storage::HistoryVertex CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::historyContext &historyContext_);
+    storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::HistoryContext& historyContext_);
+    storage::HistoryVertex CreateHistoryVertexFromKV(const storage::HistoryVertex ,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_);
+    storage::HistoryVertex CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(const EdgeAccessor &another,nlohmann::json gid_delta_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(storage::HistoryEdge edge_,nlohmann::json gid_delta_);
     Result<std::vector<EdgeAccessor>> Edges(std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> &edges_,const std::vector<EdgeTypeId> &edge_types,storage::Gid gid,bool from,std::optional<storage::Gid> existing_gid);
@@ -627,7 +627,7 @@ class Storage final {
   std::mutex gc_lock_;
 
   //aeong historical store
-  std::optional<history_delta::History_delta> saved_history_deltas_;//{"history_delta"};
+  std::optional<history_delta::HistoryDelta> saved_history_deltas_;//{"history_delta"};
   utils::Synchronized<std::map<uint64_t,uint64_t>, utils::SpinLock> transaction_tables_;//store transactionid commit_timestamp
   std::vector<uint64_t> hjm_deleted_vertices_;
   std::list<storage::Vertex*>  hjm_deleted_vertices;

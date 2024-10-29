@@ -319,15 +319,15 @@ class DbAccessor final {
   }
 
   storage::Gid IdToGid(const uint64_t key) { return accessor_->IdToGid(key); }
-  storage::HistoryVertex CreateHistoryVertexFromKV(const storage::HistoryVertex another,nlohmann::json gid_delta_,history_delta::historyContext &historyContext_){
+  storage::HistoryVertex CreateHistoryVertexFromKV(const storage::HistoryVertex another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_){
     return accessor_->CreateHistoryVertexFromKV(another,gid_delta_,historyContext_);
   }
 
-  storage::HistoryVertex CreateHistoryVertexFromKV(const storage::VertexAccessor &another,nlohmann::json gid_delta_,history_delta::historyContext &historyContext_){
+  storage::HistoryVertex CreateHistoryVertexFromKV(const storage::VertexAccessor &another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_){
     return accessor_->CreateHistoryVertexFromKV(another,gid_delta_,historyContext_);
   }
 
-  storage::HistoryVertex CreateHistoryVertexFromDelta(const storage::VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::historyContext& historyContext_){
+  storage::HistoryVertex CreateHistoryVertexFromDelta(const storage::VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::HistoryContext& historyContext_){
     return accessor_->CreateHistoryVertexFromDelta(another,may_props,historyContext_);
   }
 
@@ -344,7 +344,7 @@ class DbAccessor final {
     return std::nullopt;
   }
 
-  std::optional<history_delta::History_delta>& GetHistoryDelta(){
+  std::optional<history_delta::HistoryDelta>& GetHistoryDelta(){
     return accessor_->GetHistoryDelta();
   }
 
