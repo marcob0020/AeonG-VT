@@ -386,17 +386,16 @@ VertexAccessor &CreateExpand::CreateExpandCursor::OtherVertex(Frame &frame, Exec
 }
 
 bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::HistoryContext &historyContext_,std::list<TypedValue> &history_add_,ExecutionContext &context,bool edge_expand){
-    auto gid=current_vertex_.Gid().AsUint();
-    auto obj_ts=current_vertex_.transaction_st();
-    auto obj_te=current_vertex_.tt_te();
+    uint64_t obj_ts=current_vertex_.transaction_st();
+    uint64_t obj_te=current_vertex_.tt_te();
     bool delete_flag=false;
-    auto current_Deltas=current_vertex_.getDeltas();
+    storage::Delta* current_Deltas=current_vertex_.getDeltas();
     if(current_Deltas!= nullptr){
         if(current_Deltas->commit_timestamp==0){
           delete_flag=true;
         }
     }
-    if(!delete_flag && !history_delta::TemporalCheck(obj_ts,obj_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){//删除当前数据库中的节点
+    if(!delete_flag && !history_delta::TemporalCheck(obj_ts,obj_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){//Delete a node in the current database
         delete_flag=true;
     }
     if(!delete_flag && obj_ts>=obj_te) delete_flag=true;
@@ -409,16 +408,19 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::Hist
         }
     }
 
-    //加入历史节点的数据
+    //Add data of historical nodes
     storage::HistoryVertex current_vertex1;
     bool history_flag=false;
+
     auto [dead_deltas,need_deleted_flag]=history_delta::getDeadInfo2(current_vertex_,historyContext_.c_ts, historyContext_.c_te,historyContext_.types);
     for (auto dead_delta:dead_deltas){
         current_vertex1=context.db_accessor->CreateHistoryVertexFromDelta((current_vertex_).impl_,dead_delta,historyContext_);
         history_flag=true;
+
         auto values=TypedValue(current_vertex1);
         history_add_.emplace_back(values);
     }
+
     //delete info
     auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetVertexInfo(current_vertex_.Gid(),historyContext_.c_ts,historyContext_.c_te,historyContext_.types);
     for(auto gid_delta_:gid_history_deltas_){
@@ -435,21 +437,21 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::Hist
 }
 
 bool addHistoryVertex2(query::VertexAccessor &current_vertex_,history_delta::HistoryContext &historyContext_,history_delta::HistoryContext &historyContext2,TypedValue current_edge,std::list<std::pair<TypedValue,TypedValue>> &history_add_,ExecutionContext &context,bool edge_expand){
-  auto gid=current_vertex_.Gid().AsUint();
-  auto obj_ts=current_vertex_.transaction_st();
-  auto obj_te=current_vertex_.tt_te();
   bool delete_flag=false;
 
-  //加入历史节点的数据
+  //add data of historical nodes
   storage::HistoryVertex current_vertex1;
   bool history_flag=false;
+
   auto [dead_deltas,need_deleted_flag]=history_delta::getDeadInfo2(current_vertex_,historyContext_.c_ts, historyContext_.c_te,historyContext_.types);
   for (auto dead_delta:dead_deltas){
     current_vertex1=context.db_accessor->CreateHistoryVertexFromDelta((current_vertex_).impl_,dead_delta,historyContext_);
     history_flag=true;
+
     auto values=TypedValue(current_vertex1);
     history_add_.emplace_back(current_edge,values); 
   }
+
   //delete info
   auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetVertexInfo(current_vertex_.Gid(),historyContext_.c_ts,historyContext_.c_te,historyContext_.types);
   for(auto gid_delta_:gid_history_deltas_){
@@ -460,6 +462,7 @@ bool addHistoryVertex2(query::VertexAccessor &current_vertex_,history_delta::His
     }
     history_flag=true;
     auto values=TypedValue(current_vertex1);
+
     history_add_.emplace_back(current_edge,values); 
   }
   return delete_flag;
@@ -490,10 +493,12 @@ class ScanAllCursor : public Cursor {
       if(count==0){
         context.scan_op_name=op_name_;
         context.input_symbol=output_symbol_;
-        auto ts=(uint64_t)(*context.addition);
-        auto te=(uint64_t)(*context.addition_right);
+
+        const auto ts=static_cast<uint64_t>(*context.addition);
+        const auto te=static_cast<uint64_t>(*context.addition_right);
+
         historyContext_.c_ts=ts;//ts
-        historyContext_.c_te=te;//ts
+        historyContext_.c_te=te;//te
         historyContext_.types= ts==te? TemporalQueryType::AS_OF : TemporalQueryType::FROM_TO;
         count++;
       }
@@ -837,11 +842,13 @@ bool Expand::ExpandCursor::Pull(Frame &frame, ExecutionContext &context) {
 
   if(context.addition){
     if(count==0){
-      auto ts=(uint64_t)(*context.addition);
-      auto te=(uint64_t)(*context.addition_right);
-      historyContext_.c_ts=ts;//ts
-      historyContext_.c_te=te;//ts
-      historyContext_.types=(ts==te?"as of":"from to");
+      const auto ts=static_cast<uint64_t>(*context.addition);
+      const auto te=static_cast<uint64_t>(*context.addition_right);
+
+      historyContext_.c_ts = ts;//ts
+      historyContext_.c_te = te;//te
+      historyContext_.types = (ts==te? TemporalQueryType::AS_OF: TemporalQueryType::FROM_TO);
+
       count++;
     }
     while (true) {
@@ -960,8 +967,9 @@ bool Expand::ExpandCursor::InitEdges(Frame &frame, ExecutionContext &context) {
   }
 }
 
-bool check_edges(std::vector<storage::EdgeTypeId> edge_types,storage::EdgeTypeId type){
+bool check_edges(const std::vector<storage::EdgeTypeId>& edge_types,storage::EdgeTypeId type){
   bool flag=false;
+
   if(edge_types.size()!=0){
     auto it = std::find(edge_types.begin(), edge_types.end(), type);
     if (it != edge_types.end())flag=true;
@@ -971,62 +979,66 @@ bool check_edges(std::vector<storage::EdgeTypeId> edge_types,storage::EdgeTypeId
 
 
 void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current_vertex,uint64_t obj_ts,uint64_t obj_te,TypedValue current_edge,std::list<std::pair<TypedValue,TypedValue>> &history_add_,history_delta::HistoryContext &historyContext_) {
-  //加入数据库中的顶点
-  auto gid=current_vertex.Gid().AsUint();
-  auto tt_ts=current_vertex.transaction_st();//uint64_t transaction_st
-  auto tt_te=current_vertex.tt_te();
+
+  //join vertices in database
+  const uint64_t tt_ts=current_vertex.transaction_st();//uint64_t transaction_st
+  const uint64_t tt_te=current_vertex.tt_te();
   auto vertex=TypedValue(current_vertex);
-  if(tt_ts<=obj_te&&obj_ts<=tt_te){//节点 边 &obj_ts<=tt_te
-    if(history_delta::TemporalCheck(tt_ts,tt_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){////判断是否需要删除当前数据库的节点
+
+  if(tt_ts<=obj_te&&obj_ts<=tt_te){//obj_ts<=tt_te
+    if(history_delta::TemporalCheck(tt_ts,tt_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){////Determine whether the node of the current database needs to be deleted
       history_add_.emplace_back(current_edge,vertex);
       if(historyContext_.types== TemporalQueryType::AS_OF) return;
     }
   }
+
   history_delta::HistoryContext historyContext2;
-  historyContext2.c_ts=fmax(obj_ts,historyContext_.c_ts);//ts
-  historyContext2.c_te=fmin(obj_te,historyContext_.c_te);//ts
+  historyContext2.c_ts=(obj_ts > historyContext_.c_ts ? obj_ts: historyContext_.c_ts);//ts
+  historyContext2.c_te=(obj_te > historyContext_.c_te ? obj_te: historyContext_.c_te);//te
   historyContext2.types=historyContext_.types;
+
   addHistoryVertex2(current_vertex,historyContext_,historyContext2,current_edge,history_add_,context,true); //gmark
-  return;
 };
 
 void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t current_v_te,history_delta::HistoryContext &historyContext_,ExecutionContext &context,EdgeAtom::Direction direction,std::list<std::pair<TypedValue,TypedValue>> &history_add_){
-  auto gid=current_edge_.Gid().AsUint();
-  auto obj_ts=current_edge_.transaction_st();//uint64_t transaction_st
-  auto obj_te=(uint64_t)std::numeric_limits<int64_t>::max();//std::numeric_limits<uint64_t>::max();
+  uint64_t gid=current_edge_.Gid().AsUint();
+  uint64_t obj_ts=current_edge_.transaction_st();//uint64_t transaction_st
+  auto obj_te=static_cast<uint64_t>(std::numeric_limits<int64_t>::max());//std::numeric_limits<uint64_t>::max();
   bool delete_flag=false;
-  //-----------------当前边---------------------
-  if(obj_ts>=obj_te) delete_flag=true;
-  auto expand_vertex = direction==EdgeAtom::Direction::IN?current_edge_.From():current_edge_.To();//需要expand的节点，判断历史数据
-  auto expand_vertex_gid= expand_vertex.Gid();
-  //判断是否需要删除当前数据库的边 1、源节点和边的时间不相交
+
+  //-----------------current edge---------------------
+  if(obj_ts>=obj_te)
+    delete_flag=true;
+
+  VertexAccessor expand_vertex = direction==EdgeAtom::Direction::IN?current_edge_.From():current_edge_.To();//Nodes that need to be expanded are used to determine historical data.
+
+  //Determine whether the edge of the current database needs to be deleted 1. The time of the source node and the edge do not intersect
   if(!(current_v_ts<=obj_te&&obj_ts<=current_v_te)){
     delete_flag=true;
   }
 
-  //判断是否需要删除当前数据库的边 2、当前边不在符合的时间范围内
-  if(!history_delta::TemporalCheck(obj_ts,obj_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){//删除当前数据库中的节点
+  //Determine whether the edge of the current database needs to be deleted. 2. The current edge is not within the appropriate time range.
+  if(!history_delta::TemporalCheck(obj_ts,obj_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){//Delete a node in the current database
     delete_flag=true;
   }
   
   auto edge_type_value=TypedValue(current_edge_);
-  if(!delete_flag){//不需要删除边，扩展历史节点，节点和边的时间需要相交
+  if(!delete_flag){//There is no need to delete edges, expand historical nodes, and the times of nodes and edges need to intersect.
     pull_nodes_current_history(context,expand_vertex, obj_ts, obj_te,edge_type_value,history_add_,historyContext_);
   }
   
-  //如果不需要删除当前节点，并且类型是as of,则直接返回 不需要遍历历史数据
+  //If there is no need to delete the current node and the type is as of, return directly without traversing historical data.
   if(!delete_flag&historyContext_.types==TemporalQueryType::AS_OF){
     context.db_accessor->saveHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
     return ;
   }
 
   context.db_accessor->saveHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
-  
-  return ;
+
 }
 
 /**
- * @brief v3.0从kv中获取被删除的边
+ * @brief v3.0 gets deleted edges from kv
  * 
  * @param vertex_gid 
  * @param edge_types 
@@ -1039,38 +1051,51 @@ void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t cu
  */
 
 void addHistoryDeleteEdges(uint64_t vertex_gid,std::vector<storage::EdgeTypeId> edge_types,uint64_t current_v_ts,uint64_t current_v_te,history_delta::HistoryContext &historyContext_,ExecutionContext &context,EdgeAtom::Direction direction,std::list<std::pair<TypedValue,TypedValue>> &history_add_){
-  //数据库中未被删除的边 TODO unwrite egdes
-  //获取kv中被删除的所有边 ve:
+  //Edges that have not been deleted in the database TODO unwrite egdes
+  //Get all deleted edges in the VE segment in KV
   auto deleted_edges_vec=context.db_accessor->GetHistoryDelta()->GetDeleteEdgeInfo(historyContext_.c_ts,historyContext_.c_te,historyContext_.types,vertex_gid);
 
-  //还原kv中那些被删除的边
+  //Restore the deleted edges in kv
   for(auto &deleted_edges:deleted_edges_vec){
     for (auto it = deleted_edges.begin(); it != deleted_edges.end(); ++it) {
-      auto edge_id = it.key();
-      if(edge_id=="TT_TS" || edge_id=="TT_TE" ||edge_id=="Type"||edge_id=="Fid"||edge_id=="Tid") continue;
+      const std::string& edge_id = it.key();
+
+      if(edge_id=="TT_TS" || edge_id=="TT_TE" ||edge_id=="Type"||edge_id=="Fid"||edge_id=="Tid")
+        continue;
+
       auto edge_jsons=it.value();
-      auto edge_type = context.db_accessor->NameToEdgeType(edge_jsons["edgeType"].get<std::string_view>());
+      storage::EdgeTypeId edge_type = context.db_accessor->NameToEdgeType(edge_jsons["edgeType"].get<std::string_view>());
+
       auto ie_type=edge_jsons["Type"];
-      auto from_gid=context.db_accessor->IdToGid((uint64_t)edge_jsons["fromGid"]);
-      auto to_gid=context.db_accessor->IdToGid((uint64_t)edge_jsons["toGid"]);
+      storage::Gid from_gid=context.db_accessor->IdToGid(edge_jsons["fromGid"]);
+      storage::Gid to_gid=context.db_accessor->IdToGid(edge_jsons["toGid"]);
 
-      auto edge_ie_flag=direction == EdgeAtom::Direction::IN?ie_type=="AIE":ie_type=="AOE";//判断是否是需要的入边或者出边
-      if(!edge_ie_flag)continue;
-      if(!check_edges(edge_types,edge_type)) continue;//判断边的类型是否是需要的
+      bool edge_ie_flag=direction == EdgeAtom::Direction::IN?ie_type=="AIE":ie_type=="AOE";//Determine whether it is the required entry or exit edge
 
-      //加入数据库中的顶点
-      auto expand_vid = direction==EdgeAtom::Direction::IN?from_gid:to_gid;//需要expand的节点，判断历史数据
+      if(!edge_ie_flag)
+        continue;
+      if(!check_edges(edge_types,edge_type))
+        continue;//Determine whether the edge type is required
+
+      //Join vertices in database
+      storage::Gid expand_vid = direction == EdgeAtom::Direction::IN? from_gid: to_gid; //Nodes that need to be expanded are used to determine historical data
       storage::View view = storage::View::OLD;
-      auto expand_vertex=context.db_accessor->FindVertex(expand_vid, view);
+
+      std::optional<VertexAccessor> expand_vertex = context.db_accessor->FindVertex(expand_vid, view);
+
       // VertexAccessor expand_vertex;
-      if(!expand_vertex)return;
-      //还原边 只需要还原kv中被删除的边即可
+      if(!expand_vertex)
+        return;
+
+      //To restore edges, you only need to restore the deleted edges in kv.
       std::string tmp(edge_id);
-      auto gid=(uint64_t)std::stoi(tmp);
-      auto current_edge1=storage::HistoryEdge(context.db_accessor->IdToGid(gid),from_gid,to_gid,edge_type,nullptr);//hjm edit new 
+      auto gid=static_cast<uint64_t>(std::stoi(tmp));
+
+      storage::HistoryEdge current_edge1(context.db_accessor->IdToGid(gid),from_gid,to_gid,edge_type,nullptr);//hjm edit new
       bool history_flag=false;
-      auto before_flag=context.db_accessor->FindHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
+      bool before_flag=context.db_accessor->FindHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
       auto edge_vector=context.db_accessor->FindHistoryEdge(gid,historyContext_.c_ts,historyContext_.c_te);
+
       if(before_flag){
         // std::cout<<"do not need get edge info\n";
         if(edge_vector){
@@ -1083,33 +1108,38 @@ void addHistoryDeleteEdges(uint64_t vertex_gid,std::vector<storage::EdgeTypeId> 
       }else{
         //delete info
         auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetEdgeInfo(historyContext_.c_ts,historyContext_.c_te,historyContext_.types,gid);
-        if(!flag){//不能直接从kv中得到数据
-          for(auto gid_delta_:gid_history_deltas_){
+
+        if(!flag){//Data cannot be obtained directly from kv
+          for(const auto& gid_delta_:gid_history_deltas_){
             current_edge1=context.db_accessor->CreateHistoryEdgeFromKV(current_edge1,gid_delta_);
             pull_nodes_current_history(context,*expand_vertex, current_edge1.tt_ts, current_edge1.tt_te,TypedValue(current_edge1),history_add_,historyContext_);
-            if(!history_add_.empty())context.db_accessor->saveHistoryEdge(gid,historyContext_.c_ts,historyContext_.c_te,&current_edge1,current_edge1.tt_ts, current_edge1.tt_te);
+
+            if(!history_add_.empty())
+              context.db_accessor->saveHistoryEdge(gid,historyContext_.c_ts,historyContext_.c_te,&current_edge1,current_edge1.tt_ts, current_edge1.tt_te);
           }
-        }else{//可以直接从kv中恢复数据
-          for(int i=0;i<gid_history_deltas_.size();i++){
-            auto gid_delta_=gid_history_deltas_[i];
+        }else{//Data can be recovered directly from kv
+          for (const auto& gid_delta_ : gid_history_deltas_){
             current_edge1=context.db_accessor->CreateHistoryEdgeFromKV(current_edge1,gid_delta_);
             pull_nodes_current_history(context,*expand_vertex, current_edge1.tt_ts, current_edge1.tt_te,TypedValue(current_edge1),history_add_,historyContext_);
-            if(!history_add_.empty())context.db_accessor->saveHistoryEdge(gid,historyContext_.c_ts,historyContext_.c_te,&current_edge1,current_edge1.tt_ts, current_edge1.tt_te);
+
+            if(!history_add_.empty())
+              context.db_accessor->saveHistoryEdge(gid,historyContext_.c_ts,historyContext_.c_te,&current_edge1,current_edge1.tt_ts, current_edge1.tt_te);
           }
         }
       }
     }
   }
-  return ;
 }
 
 void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,ExecutionContext &context,TypedValue &vertex_value) {
-  if(vertex_value.type()!=TypedValue::Type::Vertex) return;
-  auto &vertex = vertex_value.ValueVertex();
-  auto direction = self_.common_.direction;
+  if(vertex_value.type()!=TypedValue::Type::Vertex)
+    return;
 
-  auto vertex_ts=vertex.transaction_st();
-  auto vertex_te=(uint64_t)std::numeric_limits<int64_t>::max();
+  VertexAccessor &vertex = vertex_value.ValueVertex();
+  EdgeAtom::Direction direction = self_.common_.direction;
+
+  const uint64_t vertex_ts=vertex.transaction_st();
+  const uint64_t vertex_te=std::numeric_limits<int64_t>::max();
 
   if (direction == EdgeAtom::Direction::IN || direction == EdgeAtom::Direction::BOTH) {
     if (self_.common_.existing_node) {
@@ -1128,16 +1158,16 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
     } else {
       in_edges_.emplace(UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types)));
     }
+
     if (in_edges_) {
       in_edges_it_.emplace(in_edges_->begin());
     }
 
-    // check verteies
+    // check vertices
     while(true){
       if (in_edges_ && *in_edges_it_ != in_edges_->end()) {
         auto edge = *(*in_edges_it_)++;
-        auto edge_ts=edge.transaction_st();
-        auto edge_te=(uint64_t)std::numeric_limits<int64_t>::max();
+
         addHistoryEdge(edge,vertex_ts,vertex_te,historyContext_,context,direction,history_add_);
       }else{
         break;
@@ -1169,12 +1199,11 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
       out_edges_it_.emplace(out_edges_->begin());
     }
 
-    //check verteies
+    //check vertices
     while(true){
       if (out_edges_ && *out_edges_it_ != out_edges_->end()) {
         auto edge = *(*out_edges_it_)++;
-        auto edge_ts=edge.transaction_st();
-        auto edge_te=(uint64_t)std::numeric_limits<int64_t>::max();
+
         addHistoryEdge(edge,vertex_ts,vertex_te,historyContext_,context,direction,history_add_);
       }else{
         break;
@@ -1185,13 +1214,17 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
 }
 
 void Expand::ExpandCursor::InitHistoryEdgesByHistoryVertex(Frame &frame,ExecutionContext &context,TypedValue &vertex_value){
-    if(vertex_value.type()!=TypedValue::Type::HistoryVertex) return;
+    if(vertex_value.type()!=TypedValue::Type::HistoryVertex)
+      return;
+
     ExpectType(self_.input_symbol_, vertex_value, TypedValue::Type::HistoryVertex);
-    auto &vertex = vertex_value.ValueHistoryVertex();
-    auto vertex_gid=vertex.gid.AsUint();
-    auto current_v_ts=vertex.tt_ts;
-    auto current_v_te=vertex.tt_te;
-    auto direction = self_.common_.direction;
+
+    storage::HistoryVertex &vertex = vertex_value.ValueHistoryVertex();
+    uint64_t vertex_gid=vertex.gid.AsUint();
+    uint64_t current_v_ts=vertex.tt_ts;
+    uint64_t current_v_te=vertex.tt_te;
+    EdgeAtom::Direction direction = self_.common_.direction;
+
     if (direction == EdgeAtom::Direction::IN || direction == EdgeAtom::Direction::BOTH) {
       if (self_.common_.existing_node){
         TypedValue &existing_node = frame[self_.common_.node_symbol];
@@ -1208,6 +1241,7 @@ void Expand::ExpandCursor::InitHistoryEdgesByHistoryVertex(Frame &frame,Executio
         }
       }else{
         std::optional<storage::Gid> existing_gid;
+
         in_edges_.emplace(
           UnwrapEdgesResult(context.db_accessor->Edges(vertex.in_edges,self_.common_.edge_types,vertex.gid,true,existing_gid)));
       }
@@ -1232,6 +1266,7 @@ void Expand::ExpandCursor::InitHistoryEdgesByHistoryVertex(Frame &frame,Executio
         }
       }else{
         std::optional<storage::Gid> existing_gid;
+
         out_edges_.emplace(
           UnwrapEdgesResult(context.db_accessor->Edges(vertex.out_edges,self_.common_.edge_types,vertex.gid,false,existing_gid)));
       }
@@ -1243,18 +1278,17 @@ void Expand::ExpandCursor::InitHistoryEdgesByHistoryVertex(Frame &frame,Executio
     while(true){
       if (in_edges_ && *in_edges_it_ != in_edges_->end()) {
         auto edge = *(*in_edges_it_)++;
-        auto edge_ts=edge.transaction_st();
-        auto edge_te=(uint64_t)std::numeric_limits<int64_t>::max();
+
         addHistoryEdge(edge,current_v_ts,current_v_te,historyContext_,context,EdgeAtom::Direction::IN,history_add_);
       }else{
         break;
       }
     }
+
     while(true){
       if (out_edges_ && *out_edges_it_ != out_edges_->end()) {
         auto edge = *(*out_edges_it_)++;
-        auto edge_ts=edge.transaction_st();
-        auto edge_te=(uint64_t)std::numeric_limits<int64_t>::max();
+
         addHistoryEdge(edge,current_v_ts,current_v_te,historyContext_,context,EdgeAtom::Direction::OUT,history_add_);
       }else{
         break;
@@ -1265,22 +1299,28 @@ void Expand::ExpandCursor::InitHistoryEdgesByHistoryVertex(Frame &frame,Executio
 
 bool Expand::ExpandCursor::InitHistoryEdges(Frame &frame, ExecutionContext &context) {
   while (true) {
-    if (!input_cursor_->Pull(frame, context)) return false;
+    if (!input_cursor_->Pull(frame, context))
+      return false;
+
     TypedValue &vertex_value = frame[self_.input_symbol_];
 
     // Null check due to possible failed optional match.
-    if (vertex_value.IsNull()) continue;
+    if (vertex_value.IsNull())
+      continue;
     
     if(context.scan_op_name=="ScanAll"){
       // Null check due to possible failed optional match.
-      if (vertex_value.IsNull()) continue;
+      if (vertex_value.IsNull())
+        continue;
+
       if(vertex_value.type()==TypedValue::Type::Vertex){
         InitHistoryEdgesByCurrentVertex(frame,context,vertex_value);
         return true;
       }
+
       InitHistoryEdgesByHistoryVertex(frame,context,vertex_value);
     }else{
-      //数据库中的顶点 VertexAccessor
+      //Vertices in the database VertexAccessor
       if(vertex_value.type()==TypedValue::Type::Vertex){
         InitHistoryEdgesByCurrentVertex(frame,context,vertex_value);
         return true;
@@ -1406,36 +1446,43 @@ class ExpandVariableCursor : public Cursor {
                                   storage::View::OLD);
     if(context.addition){
       if(count==0){
-        auto ts=(uint64_t)(*context.addition);
-        auto te=(uint64_t)(*context.addition_right);
+        const uint64_t ts=(*context.addition);
+        const uint64_t te=(*context.addition_right);
+
         historyContext_.c_ts=ts;//ts
-        historyContext_.c_te=te;//ts
+        historyContext_.c_te=te;//te
         historyContext_.types=(ts==te? TemporalQueryType::AS_OF : TemporalQueryType::FROM_TO);
         count++;
       }
+
       while (true) {
         if (ExpandHistory(frame, context)) return true;
 
         if (PullInputHistory(frame, context)) {
           std::cout<<"pull int 1881\n";
+
           // if lower bound is zero we also yield empty paths
           if (lower_bound_ == 0) {
             // std::cout<<"pull int 1884\n";
             TypedValue &vertex_value = frame[self_.input_symbol_];
             if(vertex_value.type()==TypedValue::Type::Vertex){
-              auto &start_vertex = frame[self_.input_symbol_].ValueVertex();
+              VertexAccessor &start_vertex = frame[self_.input_symbol_].ValueVertex();
               if (!self_.common_.existing_node) {
                 frame[self_.common_.node_symbol] = start_vertex;
                 return true;
-              } else if (CheckExistingNode(start_vertex, self_.common_.node_symbol, frame)) {
+              }
+
+              if (CheckExistingNode(start_vertex, self_.common_.node_symbol, frame)) {
                 return true;
               }
             }else{
-              auto &start_vertex = frame[self_.input_symbol_].ValueHistoryVertex();
+              storage::HistoryVertex &start_vertex = frame[self_.input_symbol_].ValueHistoryVertex();
               if (!self_.common_.existing_node) {
                 frame[self_.common_.node_symbol] = start_vertex;
                 return true;
-              } else if (CheckExistingHistoryNode(start_vertex, self_.common_.node_symbol, frame)) {
+              }
+
+              if (CheckExistingHistoryNode(start_vertex, self_.common_.node_symbol, frame)) {
                 return true;
               }
             }
@@ -1569,7 +1616,10 @@ class ExpandVariableCursor : public Cursor {
     // In those cases we skip that input pull and continue with the next.
     while (true) {
       if (MustAbort(context)) throw HintedAbortError();
-      if (!input_cursor_->Pull(frame, context)) return false;
+
+      if (!input_cursor_->Pull(frame, context))
+        return false;
+
       TypedValue &vertex_value = frame[self_.input_symbol_];
 
       // Null check due to possible failed optional match.
@@ -1585,8 +1635,11 @@ class ExpandVariableCursor : public Cursor {
       ExpressionEvaluator evaluator(&frame, context.symbol_table, context.evaluation_context, context.db_accessor,
                                     storage::View::OLD);
       auto calc_bound = [&evaluator](auto &bound) {
-        auto value = EvaluateInt(&evaluator, bound, "Variable expansion bound");
-        if (value < 0) throw QueryRuntimeException("Variable expansion bound must be a non-negative integer.");
+        int64_t value = EvaluateInt(&evaluator, bound, "Variable expansion bound");
+
+        if (value < 0)
+          throw QueryRuntimeException("Variable expansion bound must be a non-negative integer.");
+
         return value;
       };
 
@@ -1596,19 +1649,24 @@ class ExpandVariableCursor : public Cursor {
       uint64_t current_v_ts=0;
       uint64_t current_v_te=0;
       uint64_t test_gid=0;
+
       if (upper_bound_ > 0) {
         auto *memory = edges_.get_allocator().GetMemoryResource();
         if(vertex_value.type()==TypedValue::Type::HistoryVertex){
-          auto history_vertex=vertex_value.ValueHistoryVertex();
+          storage::HistoryVertex& history_vertex=vertex_value.ValueHistoryVertex();
+
           test_gid=history_vertex.gid.AsUint();
           current_v_ts=history_vertex.tt_ts;
-          current_v_te=history_vertex.tt_te;  
+          current_v_te=history_vertex.tt_te;
+
           edges_.emplace_back(ExpandFromHistoryVertex(history_vertex, self_.common_.direction, self_.common_.edge_types, memory,context));
         }else{
-          auto &vertex = vertex_value.ValueVertex();
+          VertexAccessor &vertex = vertex_value.ValueVertex();
+
           test_gid=vertex.Gid().AsUint();
           current_v_ts=vertex.transaction_st();
-          current_v_te=vertex.tt_te(); 
+          current_v_te=vertex.tt_te();
+
           edges_.emplace_back(ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory));
         }
         edges_it_.emplace_back(edges_.back().begin());
@@ -1621,9 +1679,9 @@ class ExpandVariableCursor : public Cursor {
       while (!edges_.empty()&edges_it_.back() != edges_.back().end()) {
         // std::cout<<"get current edge here1:"<<test_gid<<" "<<current_v_ts<<" "<<current_v_te<<"\n";
         auto current_edge1 = *edges_it_.back();
-        auto edge=current_edge1.first;
-        auto direction=current_edge1.second;
-        //TODO:加入历史边，加入历史顶点
+        EdgeAccessor edge=current_edge1.first;
+        EdgeAtom::Direction direction=current_edge1.second;
+        //TODO:Add historical edges, add historical vertices
         // VertexAccessor current_vertex =current_edge1.second == EdgeAtom::Direction::IN ? edge.From() : edge.To();
         // // history_add_.emplace_back(std::make_pair(edge,direction));
         // auto vertex_value=TypedValue(current_vertex);
@@ -1798,21 +1856,22 @@ class ExpandVariableCursor : public Cursor {
       } else {
         edges_on_frame.resize(std::min(edges_on_frame.size(), append_size));
       }
+
       // if we are here, we have a valid stack,
       // get the edge, increase the relevant iterator
-      auto edge_vertex = history_add_.front();
+      std::pair<TypedValue,TypedValue> edge_vertex = history_add_.front();
       history_add_.pop_front();
       // std::cout<<"history_add size2:"<<history_add_.size()<<"\n";
-      auto current_edge=edge_vertex.first;
-      auto current_vertex=edge_vertex.second;
+      TypedValue current_edge=edge_vertex.first;
+      TypedValue current_vertex=edge_vertex.second;
       
   
-      auto get_vertex_ts = [](const TypedValue current_vertex) {
+      auto get_vertex_ts = [](const TypedValue& current_vertex) {
         if(current_vertex.type()==TypedValue::Type::Vertex){
-          auto vertex=current_vertex.ValueVertex();
+          VertexAccessor vertex=current_vertex.ValueVertex();
           return vertex.transaction_st();
         }else {
-          auto vertex=current_vertex.ValueHistoryVertex();
+          const auto& vertex=current_vertex.ValueHistoryVertex();
           return vertex.gid.AsUint();
         }
       };
@@ -1866,14 +1925,14 @@ class ExpandVariableCursor : public Cursor {
         uint64_t test_gid=0;
         auto *memory = edges_.get_allocator().GetMemoryResource();
         if(current_vertex.type()==TypedValue::Type::Vertex){
-          auto vertex=current_vertex.ValueVertex();
+          VertexAccessor& vertex=current_vertex.ValueVertex();
           current_v_ts=vertex.transaction_st();
           current_v_te=vertex.tt_te();
           test_gid=vertex.Gid().AsUint();
           edges_.emplace_back(
             ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory));
         }else {
-          auto vertex=current_vertex.ValueHistoryVertex();
+          storage::HistoryVertex& vertex=current_vertex.ValueHistoryVertex();
           current_v_ts=vertex.tt_ts;
           current_v_te=vertex.tt_te;
           test_gid=vertex.gid.AsUint();
@@ -1885,15 +1944,17 @@ class ExpandVariableCursor : public Cursor {
           auto current_edge = *edges_it_.back();
           auto edge=current_edge.first;
           auto direction=current_edge.second;
-          //TODO:加入历史边，加入历史顶点
+          //TODO:Add historical edges, add historical vertices
           addHistoryEdge(edge,current_v_ts,current_v_te,historyContext_,context,direction,history_add_);
-          //TODO:加入历史边
+          //TODO:Add history side
           // history_add_.emplace_back(std::make_pair(edge,direction));
           edges_.pop_back();
           edges_it_.pop_back();
         }
+
         append_size+=history_add_.size();
       }
+
       if(current_vertex.type()==TypedValue::Type::Vertex){
         if (self_.common_.existing_node && !CheckExistingNode(current_vertex.ValueVertex(), self_.common_.node_symbol, frame)) continue;
       }else{
