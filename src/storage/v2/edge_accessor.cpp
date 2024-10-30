@@ -54,7 +54,7 @@ bool EdgeAccessor::IsVisible(const View view) const {
   return exists && (for_deleted_ || !deleted);
 }
 
-bool EdgeAccessor::IsVisible(const View view, const TemporalPeriod& vt) const {
+bool EdgeAccessor::IsVisible(const View view, const query::TemporalFilter& vt) const {
   bool deleted = true;
   bool exists = true;
   Delta *delta = nullptr;
@@ -337,7 +337,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
         std::cout<<"SERIALIZATION_ERROR"<<ts<<" "<<transaction_->transaction_id<<"\n";
         return Error::SERIALIZATION_ERROR;
       }
-    }else{//前一个delta提交了 全量提交
+    }else{//The previous delta was submitted and the full amount was submitted.
       // std::cout<<"edge commit:"<<ts<<" "<<edge_.ptr->num<<"\n";
       edge_.ptr->num+=1;
       if(edge_.ptr->num>config_.AnchorNum){
@@ -420,7 +420,7 @@ Result<PropertyValue> EdgeAccessor::GetProperty(PropertyId property, View view) 
   return std::move(value);
 }
 
-Result<utils::interval<PropertyValue>> EdgeAccessor::GetProperty(PropertyId property, View view, const TemporalPeriod& vt) const {
+Result<utils::interval<PropertyValue>> EdgeAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
@@ -434,7 +434,7 @@ Result<utils::interval<PropertyValue>> EdgeAccessor::GetProperty(PropertyId prop
     value = edge_.ptr->properties.GetProperty(property);
     delta = edge_.ptr->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, TemporalPeriod vt_intersection) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, TemporalPeriod& vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         if (delta.property.key == property) {
@@ -515,7 +515,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view) 
   return std::move(properties);
 }
 
-  Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view, const TemporalPeriod& vt) const {
+  Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view, const query::TemporalFilter& vt) const {
   if (!config_.properties_on_edges) return std::map<PropertyId, PropertyValue>{};
   bool exists = true;
   bool deleted = false;

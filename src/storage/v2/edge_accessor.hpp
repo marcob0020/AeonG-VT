@@ -12,6 +12,7 @@
 #pragma once
 
 #include <optional>
+#include <query/temporal_filter.hpp>
 #include <utils/interval.hpp>
 
 #include "storage/v2/edge.hpp"
@@ -67,7 +68,7 @@ class EdgeAccessor final {
   bool IsVisible(View view) const;
 
   /// @return true if the object is visible  from the current transaction and exists in the given vt range
-  bool IsVisible(View view, const TemporalPeriod& vt) const;
+  bool IsVisible(View view, const query::TemporalFilter& vt) const;
 
   VertexAccessor FromVertex() const;
 
@@ -95,13 +96,13 @@ class EdgeAccessor final {
   Result<PropertyValue> GetProperty(PropertyId property, View view) const;
 
   /// @throw std::bad_alloc
-  Result<utils::interval<PropertyValue>> GetProperty(PropertyId property, View view, const TemporalPeriod& vt) const;
+  Result<utils::interval<PropertyValue>> GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const;
 
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;
 
   /// @throw std::bad_alloc
-  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const TemporalPeriod& vt) const;
+  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const query::TemporalFilter& vt) const;
 
   Gid Gid() const noexcept {
     if (config_.properties_on_edges) {

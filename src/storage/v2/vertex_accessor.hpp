@@ -12,6 +12,7 @@
 #pragma once
 
 #include <optional>
+#include <query/temporal_filter.hpp>
 
 #include "storage/v2/vertex.hpp"
 
@@ -50,16 +51,16 @@ class VertexAccessor final {
                                               Constraints *constraints, Config::Items config, View view);
 
   static std::optional<VertexAccessor>  Creates(Vertex *vertex, Transaction *transaction, Indices *indices,
-                                                   Constraints *constraints, Config::Items config, View view, const TemporalPeriod& vt);
+                                                   Constraints *constraints, Config::Items config, View view, const query::TemporalFilter& vt);
 
   static std::optional<VertexAccessor> Create(Vertex *vertex, Transaction *transaction, Indices *indices,
-                                              Constraints *constraints, Config::Items config, View view, const TemporalPeriod& vt);
+                                              Constraints *constraints, Config::Items config, View view, const query::TemporalFilter& vt);
 
   /// @return true if the object is visible from the current transaction
   bool IsVisible(View view) const;
 
   /// @return true if the object is visible from the current transaction and exists in the given vt range
-  bool IsVisible(View view, const TemporalPeriod& vt) const;
+  bool IsVisible(View view, const query::TemporalFilter& vt) const;
 
   /// Add a label and return `true` if insertion took place.
   /// `false` is returned if the label already existed.
@@ -84,12 +85,17 @@ class VertexAccessor final {
   Result<bool> HasLabel(LabelId label, View view) const;
 
   /// Returns true if label is present in the requested interval
-  Result<bool> HasLabel(LabelId label, View view, const TemporalPeriod& vt) const;
+  Result<bool> HasLabel(LabelId label, View view, const query::TemporalFilter& vt) const;
 
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
   ///        std::vector::max_size().
   Result<std::vector<LabelId>> Labels(View view) const;
+
+  /// @throw std::bad_alloc
+  /// @throw std::length_error if the resulting vector exceeds
+  ///        std::vector::max_size().
+  Result<std::vector<LabelId>> Labels(View view, const query::TemporalFilter& vt) const;
 
   /// Set a property value and return the old value.
   /// @throw std::bad_alloc
@@ -135,13 +141,13 @@ class VertexAccessor final {
   Result<PropertyValue> GetProperty(PropertyId property, View view) const;
 
   /// @throw std::bad_alloc
-  Result<utils::interval<PropertyValue>> GetProperty(PropertyId property, View view, const TemporalPeriod& vt) const;
+  Result<utils::interval<PropertyValue>> GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const;
 
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;
 
   /// @throw std::bad_alloc
-  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const TemporalPeriod& vt) const;
+  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const query::TemporalFilter& vt) const;
 
 
   /// @throw std::bad_alloc
@@ -153,8 +159,8 @@ class VertexAccessor final {
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
   ///        std::vector::max_size().
-  Result<std::vector<EdgeAccessor>> InEdges(View view, const std::vector<EdgeTypeId> &edge_types = {},
-                                            const VertexAccessor *destination = nullptr, const TemporalPeriod& vt) const;
+  Result<std::vector<EdgeAccessor>> InEdges(View view, const query::TemporalFilter& vt, const std::vector<EdgeTypeId> &edge_types = {},
+                                            const VertexAccessor *destination = nullptr) const;
 
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
@@ -165,8 +171,8 @@ class VertexAccessor final {
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds
   ///        std::vector::max_size().
-  Result<std::vector<EdgeAccessor>> OutEdges(View view, const std::vector<EdgeTypeId> &edge_types = {},
-                                             const VertexAccessor *destination = nullptr, const TemporalPeriod& vt) const;
+  Result<std::vector<EdgeAccessor>> OutEdges(View view, const query::TemporalFilter& vt, const std::vector<EdgeTypeId> &edge_types = {},
+                                             const VertexAccessor *destination = nullptr) const;
 
   Result<size_t> InDegree(View view) const;
 
