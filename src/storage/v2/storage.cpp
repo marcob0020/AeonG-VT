@@ -804,8 +804,15 @@ VertexAccessor Storage::Accessor::CreateVertex(const TemporalPeriod& vt) {
   auto [it, inserted] = acc.insert(Vertex{storage::Gid::FromUint(gid), delta});
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
-  delta->prev.Set(&*it);
-  return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
+
+  const auto vertex = (&*it);
+
+  delta->prev.Set(vertex);
+
+  if (!vt.whole()) {
+    vertex->has_vt++;
+  }
+  return VertexAccessor(vertex, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
 VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid) {
@@ -842,8 +849,16 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const TemporalP
   auto [it, inserted] = acc.insert(Vertex{gid, delta});
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
-  delta->prev.Set(&*it);
-  return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
+
+  const auto vertex = ((&*it));
+
+  delta->prev.Set(vertex);
+
+  if (!vt.whole()) {
+    vertex->has_vt++;
+  }
+
+  return VertexAccessor(vertex, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
 std::optional<VertexAccessor> Storage::Accessor::FindVertex(Gid gid, View view) {
@@ -929,7 +944,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     transaction_.prinfVertex_.emplace_back(print);
   }
 
-  
+
   //hjm end
 
   return std::make_optional<VertexAccessor>(vertex_ptr, &transaction_, &storage_->indices_, &storage_->constraints_,
@@ -1012,6 +1027,9 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     transaction_.prinfVertex_.emplace_back(print);
   }
 
+  if (!vt.whole() && vertex_ptr->has_vt >= 0) {
+    vertex_ptr->has_vt++;
+  }
 
   //hjm end
 
@@ -1241,6 +1259,11 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
 
 
   auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vt);
+
+  if (!vt.whole() && vertex_ptr->has_vt >= 0) {
+    vertex_ptr->has_vt++;
+  }
+
   vertex_ptr->deleted = true;
 
 
@@ -1522,16 +1545,31 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     //hjm end
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
+
+    if (!vt.whole() ) {
+      it->has_vt = 1;
+    }
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge, vt);
+
+  if (!vt.whole() && from_vertex->has_vt >= 0) {
+    from_vertex->has_vt++;
+  }
+
   from_vertex->out_edges.emplace_back(edge_type, to_vertex, edge);
+
   //hjm begin
   delta->transaction_st = from_ts;
   transaction_.ve_changed.insert(from_vertex->gid);
   //hjm end
 
   delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge, vt);
+
+  if (!vt.whole() && to_vertex->has_vt >= 0) {
+    to_vertex->has_vt++;
+  }
+
   to_vertex->in_edges.emplace_back(edge_type, from_vertex, edge);
   //hjm begin
   delta->transaction_st = to_ts;
@@ -1808,17 +1846,32 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     it->to_gid=to_vertex->gid;
     delta->gid=gid;
     //hjm end
+
+    if (!vt.whole() ) {
+      it->has_vt = 1;
+    }
+
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge, vt);
+
+  if (!vt.whole() && from_vertex->has_vt >= 0) {
+    from_vertex->has_vt++;
+  }
+
   from_vertex->out_edges.emplace_back(edge_type, to_vertex, edge);
   //hjm begin
   delta->transaction_st = from_ts;
   transaction_.ve_changed.insert(from_vertex->gid);
   //hjm end
   delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge, vt);
+
+  if (!vt.whole() && to_vertex->has_vt >= 0) {
+    to_vertex->has_vt++;
+  }
+
   to_vertex->in_edges.emplace_back(edge_type, from_vertex, edge);
 
   //hjm begin
@@ -2168,6 +2221,11 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     } else if (it == edges->end()) {
       return false;
     }
+
+    if (!vt.whole() && vertex->has_vt >= 0) {
+      vertex->has_vt++;
+    }
+
     std::swap(*it, *edges->rbegin());
     edges->pop_back();
     return true;
@@ -2260,8 +2318,8 @@ utils::BasicResult<ConstraintViolation, void> Storage::Accessor::Commit(
   std::list<Gid> my_deleted_vertices;
   std::list<Gid> my_deleted_edges;
   
-  std::set<storage::Vertex *> commit_vertices;
-  std::set<storage::Edge *> commit_edges;
+  std::set<storage::Vertex *> commit_vertices_vt;
+  std::set<storage::Edge *> commit_edges_vt;
 
   if (transaction_.deltas.empty()) {
     // We don't have to update the commit timestamp here because no one reads
@@ -2270,9 +2328,22 @@ utils::BasicResult<ConstraintViolation, void> Storage::Accessor::Commit(
   } else {
     // Validate that existence constraints are satisfied for all modified
     // vertices.
+
+    //In the meantime, also enqueue vertices and edges for which has_vt may be fixed
     for (const auto &delta : transaction_.deltas) {
       auto prev = delta.prev.Get();
       MG_ASSERT(prev.type != PreviousPtr::Type::NULLPTR, "Invalid pointer!");
+      if (prev.type == PreviousPtr::Type::VERTEX) {
+        if (!delta.vt.whole() && prev.vertex->has_vt >= 0) {
+          commit_vertices_vt.emplace(prev.vertex);
+        }
+      }else if (prev.type == PreviousPtr::Type::EDGE) {
+        if (!delta.vt.whole() && prev.edge->has_vt >= 0) {
+          commit_edges_vt.emplace(prev.edge);
+        }
+      }
+
+
       if (prev.type != PreviousPtr::Type::VERTEX) {
         continue;
       }
@@ -2283,6 +2354,7 @@ utils::BasicResult<ConstraintViolation, void> Storage::Accessor::Commit(
         Abort();
         return *validation_result;
       }
+
     }
 
     // Result of validating the vertex against unqiue constraints. It has to be
@@ -2455,6 +2527,14 @@ utils::BasicResult<ConstraintViolation, void> Storage::Accessor::Commit(
 
   }
 
+  for (auto& vertex: commit_vertices_vt) {
+    vertex->has_vt = std::numeric_limits<int>::min();
+  }
+
+  for (auto& edge: commit_edges_vt) {
+    edge->has_vt = std::numeric_limits<int>::min();
+  }
+
   storage_->transaction_tables_.WithLock(
         [&](auto &transaction_tables) { transaction_tables[transaction_.transaction_id]=*commit_timestamp_; });
   
@@ -2492,6 +2572,11 @@ void Storage::Accessor::Abort() {
         auto vertex = prev.vertex;
         std::lock_guard<utils::SpinLock> guard(vertex->lock);
         Delta *current = vertex->delta;
+
+        if (!delta.vt.whole() && vertex->has_vt >= 0) {
+          vertex->has_vt--;
+        }
+
         while (current != nullptr &&
                current->timestamp->load(std::memory_order_acquire) == transaction_.transaction_id) {
           switch (current->action) {
@@ -2583,6 +2668,11 @@ void Storage::Accessor::Abort() {
         auto edge = prev.edge;
         std::lock_guard<utils::SpinLock> guard(edge->lock);
         Delta *current = edge->delta;
+
+        if (!delta.vt.whole() && edge->has_vt >= 0) {
+          edge->has_vt--;
+        }
+
         while (current != nullptr &&
                current->timestamp->load(std::memory_order_acquire) == transaction_.transaction_id) {
           switch (current->action) {
@@ -2828,6 +2918,7 @@ Transaction Storage::CreateTransaction(IsolationLevel isolation_level) {
   // `timestamp`) below.
   uint64_t transaction_id;
   uint64_t start_timestamp;
+
   {
     std::lock_guard<utils::SpinLock> guard(engine_lock_);
     transaction_id = transaction_id_++;

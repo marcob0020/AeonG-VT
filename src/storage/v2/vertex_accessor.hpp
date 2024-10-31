@@ -56,6 +56,12 @@ class VertexAccessor final {
   static std::optional<VertexAccessor> Create(Vertex *vertex, Transaction *transaction, Indices *indices,
                                               Constraints *constraints, Config::Items config, View view, const query::TemporalFilter& vt);
 
+  /// @return true if at least one operation with vt was done to this vertex
+  bool HasTemporalFeatures() const;
+
+  /// @return TemporalFilter corresponding to " FOR VT AS OF <transaction_now> "
+  query::TemporalFilter GetNowFilter() const;
+
   /// @return true if the object is visible from the current transaction
   bool IsVisible(View view) const;
 

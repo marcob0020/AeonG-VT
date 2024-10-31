@@ -47,6 +47,8 @@ struct Edge {
   // uint8_t PAD;
   // uint16_t PAD;
 
+  int has_vt = 0;
+
   //hjm begin add start-timestamp
   // uint64_t last_t;
   uint64_t transaction_st;

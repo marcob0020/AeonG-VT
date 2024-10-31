@@ -21,6 +21,19 @@
 
 namespace storage {
 
+bool EdgeAccessor::HasTemporalFeatures() const {
+  return edge_.ptr->has_vt;
+}
+
+query::TemporalFilter EdgeAccessor::GetNowFilter() const {
+  query::TemporalFilter filter;
+  filter.first = transaction_->transaction_now;
+  filter.type = query::TemporalQueryType::AS_OF;
+
+  return filter;
+}
+
+
 bool EdgeAccessor::IsVisible(const View view) const {
   bool deleted = true;
   bool exists = true;
@@ -251,6 +264,11 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   delta->to_gid=edge_.ptr->to_gid;
   delta->transaction_st = ts;//edge_.ptr->transaction_st;
   //hjm end
+
+  if (!vt.whole() && edge_.ptr->has_vt >= 0) {
+    edge_.ptr->has_vt++;
+  }
+
   edge_.ptr->properties.SetProperty(property, value);
   return std::move(current_value);
 }
@@ -372,6 +390,11 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
     delta->transaction_st = ts;
     //hjm end
   }
+
+  if (!vt.whole() && edge_.ptr->has_vt >= 0) {
+    edge_.ptr->has_vt++;
+  }
+
   edge_.ptr->properties.ClearProperties();
 
   return std::move(properties);

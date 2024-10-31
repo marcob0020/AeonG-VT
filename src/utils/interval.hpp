@@ -42,6 +42,10 @@ public:
     //TODO
   }
 
+  T& get_first(utils::VTDateTime from) const {
+    //TODO
+  }
+
   bool is_single(Period from_to) const {
     //TODO
   }

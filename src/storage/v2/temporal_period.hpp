@@ -30,6 +30,10 @@ struct TemporalPeriod {
     return first <= other.first && second <= other.second;
   }
 
+  bool whole() const {
+    return first == utils::VTDateTime::min() && second == utils::VTDateTime::max();
+  }
+
   TemporalPeriod intersect(const TemporalPeriod &other) const {
     return TemporalPeriod(std::max(first, other.first), std::min(other.second, second));
   }

@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <storage/v2/temporal_period.hpp>
+
 #include "utils/vt_temporal.hpp"
 
 namespace query{
@@ -76,6 +78,10 @@ namespace query{
           default:
             return second;
         }
+      }
+
+      storage::TemporalPeriod get_period() const {
+        return {get_first(), get_second()};
       }
 
       friend std::ostream &operator<<(std::ostream &os, const TemporalFilter &ldt) {

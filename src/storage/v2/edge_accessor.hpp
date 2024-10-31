@@ -64,6 +64,12 @@ class EdgeAccessor final {
         }
   //hjm end
 
+  /// @return true if at least one operation with vt was done to this edge
+  bool HasTemporalFeatures() const;
+
+  /// @return TemporalFilter corresponding to " FOR VT AS OF <transaction_now> "
+  query::TemporalFilter GetNowFilter() const;
+
   /// @return true if the object is visible from the current transaction
   bool IsVisible(View view) const;
 

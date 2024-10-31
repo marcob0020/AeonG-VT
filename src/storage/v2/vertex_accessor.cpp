@@ -147,6 +147,18 @@ std::optional<VertexAccessor> VertexAccessor::Create(Vertex *vertex, Transaction
   return VertexAccessor{vertex, transaction, indices, constraints, config};
 }
 
+bool VertexAccessor::HasTemporalFeatures() const {
+  return vertex_->has_vt;
+}
+
+query::TemporalFilter VertexAccessor::GetNowFilter() const {
+  query::TemporalFilter filter;
+  filter.first = transaction_->transaction_now;
+  filter.type = query::TemporalQueryType::AS_OF;
+
+  return filter;
+}
+
 bool VertexAccessor::IsVisible(View view) const {
   const auto [exists, deleted] = detail::IsVisible(vertex_, transaction_, view);
   return exists && (for_deleted_ || !deleted);
@@ -301,6 +313,10 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const TemporalPeriod& vt) {
 
   vertex_->labels.push_back(label);
 
+  if (!vt.whole() && vertex_->has_vt >= 0) {
+    vertex_->has_vt++;
+  }
+
   //set for aeong time
   transaction_->v_changed.insert(vertex_->gid);
   delta->transaction_st = ts;
@@ -446,6 +462,10 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label, const TemporalPeriod& vt
   //aeong set for transaction
   transaction_->v_changed.insert(vertex_->gid);
   delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
+
+  if (!vt.whole() && vertex_->has_vt >= 0) {
+    vertex_->has_vt++;
+  }
 
   //TODO check if ok even if delete does not cover the whole lifetime
   std::swap(*it, *vertex_->labels.rbegin());
@@ -714,6 +734,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   // "modify in-place". Additionally, the created delta will make other
   // transactions get a SERIALIZATION_ERROR.
   auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property, current_value);
+
   vertex_->properties.SetProperty(property, value);
   vertex_->num+=1;
 
@@ -792,6 +813,11 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   // "modify in-place". Additionally, the created delta will make other
   // transactions get a SERIALIZATION_ERROR.
   auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vt, property, current_value);
+
+  if (!vt.whole() && vertex_->has_vt >= 0) {
+    vertex_->has_vt++;
+  }
+
   vertex_->properties.SetProperty(property, value);
   vertex_->num+=1;
 
@@ -944,6 +970,10 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
 
   //set for aeong
   transaction_->v_changed.insert(vertex_->gid);
+
+  if (!vt.whole() && vertex_->has_vt >= 0) {
+    vertex_->has_vt++;
+  }
 
   vertex_->properties.ClearProperties();
 

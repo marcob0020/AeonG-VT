@@ -46,6 +46,9 @@ struct Vertex {
 
   mutable utils::SpinLock lock;
   bool deleted;
+
+  int has_vt = 0;
+
   int num;
   uint64_t transaction_st;
   uint64_t ve_tt_ts;

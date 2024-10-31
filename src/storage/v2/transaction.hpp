@@ -72,7 +72,8 @@ struct Transaction {
         start_timestamp(start_timestamp),
         command_id(0),
         must_abort(false),
-        isolation_level(isolation_level) {
+        isolation_level(isolation_level),
+        transaction_now(utils::CurrentVTDateTime()){
         }
 
   Transaction(Transaction &&other) noexcept
@@ -82,7 +83,9 @@ struct Transaction {
         command_id(other.command_id),
         deltas(std::move(other.deltas)),
         must_abort(other.must_abort),
-        isolation_level(other.isolation_level) {
+        isolation_level(other.isolation_level),
+        transaction_now(other.transaction_now)
+        {
           gid_anchor_edge_=other.gid_anchor_edge_;
           gid_anchor_vertex_=other.gid_anchor_vertex_;
           prinfEdge_=other.prinfEdge_;
@@ -105,6 +108,7 @@ struct Transaction {
   
   uint64_t transaction_id;
   uint64_t start_timestamp;
+  utils::VTDateTime transaction_now;
   // The `Transaction` object is stack allocated, but the `commit_timestamp`
   // must be heap allocated because `Delta`s have a pointer to it, and that
   // pointer must stay valid after the `Transaction` is moved into
@@ -133,5 +137,6 @@ inline bool operator<(const Transaction &first, const Transaction &second) {
 }
 inline bool operator==(const Transaction &first, const uint64_t &second) { return first.transaction_id == second; }
 inline bool operator<(const Transaction &first, const uint64_t &second) { return first.transaction_id < second; }
+
 
 }  // namespace storage
