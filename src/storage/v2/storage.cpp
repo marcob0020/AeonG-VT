@@ -47,6 +47,7 @@
 
 /// REPLICATION ///
 
+
 #include "storage/v2/replication/replication_client.hpp"
 #include "storage/v2/replication/replication_server.hpp"
 #include "storage/v2/replication/rpc.hpp"
@@ -2551,6 +2552,128 @@ utils::BasicResult<ConstraintViolation, void> Storage::Accessor::Commit(
   return {};
 }
 
+
+
+bool Storage::Accessor::ProbeDeltasForDeletion(Vertex* vertex, Delta::Action action, const add_info_t& infos) {
+  Delta* before_delta = vertex->delta;
+
+  bool deleted_gid = false;
+
+  bool found = false;
+
+  while (before_delta != nullptr && !found) {
+
+    //Loop through all this object's deltas. Search for all matching deltas.
+    //TODO: check if adds may interfere. In that case, use an interval<bool> to decide if the cancellation is needed
+    switch (before_delta->action) {
+      case storage::Delta::Action::REMOVE_LABEL:
+        if (action == before_delta->action) {
+          if (before_delta->label == std::get<LabelId>(infos)) {
+            found = true;
+          }
+        }
+      break;
+      case storage::Delta::Action::REMOVE_OUT_EDGE:
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        if (action == before_delta->action) {
+          ve_t link = {before_delta->vertex_edge.edge_type, before_delta->vertex_edge.vertex, before_delta->vertex_edge.edge};
+
+          if (link == std::get<ve_t>(infos)) {
+            found = true;
+          }
+        }
+        break;
+      }
+      case storage::Delta::Action::DELETE_OBJECT: {
+        if (action == before_delta->action) {
+          found = true;
+        }
+      }
+      break;
+      default:break;
+    }
+
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+
+  }
+  if (found) {
+    switch(action) {
+      case Delta::Action::REMOVE_LABEL: {
+        auto it = std::find(vertex->labels.begin(), vertex->labels.end(), std::get<LabelId>(infos));
+        MG_ASSERT(it != vertex->labels.end() , "Invalid database state!");
+        std::swap(*it, *vertex->labels.rbegin());
+        vertex->labels.pop_back();
+      }
+      break;
+      case Delta::Action::REMOVE_OUT_EDGE: {
+        auto it = std::find(vertex->out_edges.begin(), vertex->out_edges.end(), std::get<ve_t>(infos));
+        MG_ASSERT(it != vertex->out_edges.end(), "Invalid database state!");
+        std::swap(*it, *vertex->out_edges.rbegin());
+        vertex->out_edges.pop_back();
+        // Decrement edge count. We only decrement the count here because
+        // the information in `REMOVE_IN_EDGE` and `Edge/DELETE_OBJECT` is
+        // redundant. Also, `Edge/DELETE_OBJECT` isn't available when edge
+        // properties are disabled.
+        storage_->edge_count_.fetch_add(-1, std::memory_order_acq_rel);
+      }
+      break;
+      case Delta::Action::REMOVE_IN_EDGE: {
+        auto it = std::find(vertex->in_edges.begin(), vertex->in_edges.end(), std::get<ve_t>(infos));
+        MG_ASSERT(it != vertex->in_edges.end(), "Invalid database state!");
+        std::swap(*it, *vertex->in_edges.rbegin());
+        vertex->in_edges.pop_back();
+      }
+      break;
+      case Delta::Action::DELETE_OBJECT: {
+        vertex->deleted = true;
+        deleted_gid = true;
+      }
+      break;
+      default:break;
+    }
+  }
+
+  return deleted_gid;
+}
+
+bool Storage::Accessor::ProbeDeltasForDeletion(Edge* edge, Delta::Action action, const add_info_t& infos) {
+  Delta* before_delta = edge->delta;
+
+  bool deleted_gid = false;
+
+  bool found = false;
+
+  while (before_delta != nullptr && !found) {
+
+    //Loop through all this object's deltas. Search for all matching deltas.
+    //TODO: check if adds may interfere. In that case, use an interval<bool> to decide if the cancellation is needed
+    switch (before_delta->action) {
+      case storage::Delta::Action::DELETE_OBJECT:
+        if (action == before_delta->action) {
+          found = true;
+        }
+      break;
+      default:break;
+    }
+
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+  }
+
+  if (found) {
+    switch (action) {
+      case storage::Delta::Action::DELETE_OBJECT:
+        if (action == before_delta->action) {
+          edge->deleted = true;
+          deleted_gid = true;
+        }
+      break;
+      default:break;
+    }
+  }
+
+  return deleted_gid;
+}
+
 void Storage::Accessor::Abort() {
   MG_ASSERT(is_transaction_active_, "The transaction is already terminated!");
 
@@ -2565,6 +2688,12 @@ void Storage::Accessor::Abort() {
   std::list<Gid> my_deleted_edges1;
   //hjm end
 
+  using obj_t = std::variant<Vertex*, Edge*>;
+
+  using vt_checks_set_t = std::tuple<Delta::Action, obj_t, add_info_t>;
+
+  std::set<vt_checks_set_t> vt_checks;
+
   for (const auto &delta : transaction_.deltas) {
     auto prev = delta.prev.Get();
     switch (prev.type) {
@@ -2572,28 +2701,41 @@ void Storage::Accessor::Abort() {
         auto vertex = prev.vertex;
         std::lock_guard<utils::SpinLock> guard(vertex->lock);
         Delta *current = vertex->delta;
+        bool is_vt = !delta.vt.whole() && vertex->has_vt >= 0;
 
-        if (!delta.vt.whole() && vertex->has_vt >= 0) {
+        if (is_vt) {
           vertex->has_vt--;
         }
 
         while (current != nullptr &&
                current->timestamp->load(std::memory_order_acquire) == transaction_.transaction_id) {
+
           switch (current->action) {
             //hjm begin
             vertex->transaction_st=current->commit_timestamp;
             //hjm end
             case Delta::Action::REMOVE_LABEL: {
               auto it = std::find(vertex->labels.begin(), vertex->labels.end(), current->label);
-              MG_ASSERT(it != vertex->labels.end(), "Invalid database state!");
-              std::swap(*it, *vertex->labels.rbegin());
-              vertex->labels.pop_back();
+              if (!is_vt) {
+                MG_ASSERT(it != vertex->labels.end() , "Invalid database state!");
+                std::swap(*it, *vertex->labels.rbegin());
+                vertex->labels.pop_back();
+              }else {
+                auto [set_value, set_inserted]= vt_checks.insert({current->action, vertex,current->label});
+                if (set_inserted) {
+                  ProbeDeltasForDeletion(vertex, current->action,current->label);
+                }
+              }
+
               break;
             }
             case Delta::Action::ADD_LABEL: {
               auto it = std::find(vertex->labels.begin(), vertex->labels.end(), current->label);
-              MG_ASSERT(it == vertex->labels.end(), "Invalid database state!");
-              vertex->labels.push_back(current->label);
+              MG_ASSERT(it == vertex->labels.end() || is_vt, "Invalid database state!");
+
+              if (it == vertex->labels.end())
+                vertex->labels.push_back(current->label);
+
               break;
             }
             case Delta::Action::SET_PROPERTY: {
@@ -2604,50 +2746,82 @@ void Storage::Accessor::Abort() {
               std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{current->vertex_edge.edge_type,
                                                              current->vertex_edge.vertex, current->vertex_edge.edge};
               auto it = std::find(vertex->in_edges.begin(), vertex->in_edges.end(), link);
-              MG_ASSERT(it == vertex->in_edges.end(), "Invalid database state!");
-              vertex->in_edges.push_back(link);
+              MG_ASSERT(it == vertex->in_edges.end() || is_vt, "Invalid database state!");
+              if (it == vertex->in_edges.end())
+                vertex->in_edges.push_back(link);
               break;
             }
             case Delta::Action::ADD_OUT_EDGE: {
               std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{current->vertex_edge.edge_type,
                                                              current->vertex_edge.vertex, current->vertex_edge.edge};
               auto it = std::find(vertex->out_edges.begin(), vertex->out_edges.end(), link);
-              MG_ASSERT(it == vertex->out_edges.end(), "Invalid database state!");
-              vertex->out_edges.push_back(link);
-              // Increment edge count. We only increment the count here because
-              // the information in `ADD_IN_EDGE` and `Edge/RECREATE_OBJECT` is
-              // redundant. Also, `Edge/RECREATE_OBJECT` isn't available when
-              // edge properties are disabled.
-              storage_->edge_count_.fetch_add(1, std::memory_order_acq_rel);
+              MG_ASSERT(it == vertex->out_edges.end() || is_vt, "Invalid database state!");
+
+              if (it == vertex->out_edges.end()) {
+                vertex->out_edges.push_back(link);
+                // Increment edge count. We only increment the count here because
+                // the information in `ADD_IN_EDGE` and `Edge/RECREATE_OBJECT` is
+                // redundant. Also, `Edge/RECREATE_OBJECT` isn't available when
+                // edge properties are disabled.
+                storage_->edge_count_.fetch_add(1, std::memory_order_acq_rel);
+              }
+
               break;
             }
             case Delta::Action::REMOVE_IN_EDGE: {
               std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{current->vertex_edge.edge_type,
                                                              current->vertex_edge.vertex, current->vertex_edge.edge};
               auto it = std::find(vertex->in_edges.begin(), vertex->in_edges.end(), link);
-              MG_ASSERT(it != vertex->in_edges.end(), "Invalid database state!");
-              std::swap(*it, *vertex->in_edges.rbegin());
-              vertex->in_edges.pop_back();
+
+              if (!is_vt) {
+                MG_ASSERT(it != vertex->in_edges.end(), "Invalid database state!");
+                std::swap(*it, *vertex->in_edges.rbegin());
+                vertex->in_edges.pop_back();
+              }else {
+                auto [set_value, set_inserted]= vt_checks.insert({current->action, vertex, link});
+                if (set_inserted) {
+                  ProbeDeltasForDeletion(vertex, current->action, link);
+                }
+              }
               break;
             }
             case Delta::Action::REMOVE_OUT_EDGE: {
               std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{current->vertex_edge.edge_type,
                                                              current->vertex_edge.vertex, current->vertex_edge.edge};
               auto it = std::find(vertex->out_edges.begin(), vertex->out_edges.end(), link);
-              MG_ASSERT(it != vertex->out_edges.end(), "Invalid database state!");
-              std::swap(*it, *vertex->out_edges.rbegin());
-              vertex->out_edges.pop_back();
-              // Decrement edge count. We only decrement the count here because
-              // the information in `REMOVE_IN_EDGE` and `Edge/DELETE_OBJECT` is
-              // redundant. Also, `Edge/DELETE_OBJECT` isn't available when edge
-              // properties are disabled.
-              storage_->edge_count_.fetch_add(-1, std::memory_order_acq_rel);
+
+              if (!is_vt) {
+                MG_ASSERT(it != vertex->out_edges.end(), "Invalid database state!");
+                std::swap(*it, *vertex->out_edges.rbegin());
+                vertex->out_edges.pop_back();
+                // Decrement edge count. We only decrement the count here because
+                // the information in `REMOVE_IN_EDGE` and `Edge/DELETE_OBJECT` is
+                // redundant. Also, `Edge/DELETE_OBJECT` isn't available when edge
+                // properties are disabled.
+                storage_->edge_count_.fetch_add(-1, std::memory_order_acq_rel);
+              }else {
+                auto [set_value, set_inserted]= vt_checks.insert({current->action, vertex, link});
+                if (set_inserted) {
+                  ProbeDeltasForDeletion(vertex, current->action, link);
+                }
+              }
               break;
             }
             case Delta::Action::DELETE_OBJECT: {
-              vertex->deleted = true;
-              my_deleted_vertices.push_back(vertex->gid);
-              my_deleted_vertices1.push_back(vertex->gid);
+
+              if (!is_vt) {
+                vertex->deleted = true;
+                my_deleted_vertices.push_back(vertex->gid);
+                my_deleted_vertices1.push_back(vertex->gid);
+              } else {
+                auto [set_value, set_inserted] = vt_checks.insert({current->action, vertex, {}});
+                if (set_inserted) {
+                  if (ProbeDeltasForDeletion(vertex,current->action,{})) {
+                    my_deleted_vertices.push_back(vertex->gid);
+                    my_deleted_vertices1.push_back(vertex->gid);
+                  }
+                }
+              }
               break;
             }
             case Delta::Action::RECREATE_OBJECT: {
@@ -2668,8 +2842,9 @@ void Storage::Accessor::Abort() {
         auto edge = prev.edge;
         std::lock_guard<utils::SpinLock> guard(edge->lock);
         Delta *current = edge->delta;
+        bool is_vt = !delta.vt.whole() && edge->has_vt >= 0;
 
-        if (!delta.vt.whole() && edge->has_vt >= 0) {
+        if (is_vt) {
           edge->has_vt--;
         }
 
@@ -2681,9 +2856,19 @@ void Storage::Accessor::Abort() {
               break;
             }
             case Delta::Action::DELETE_OBJECT: {
-              edge->deleted = true;
-              my_deleted_edges.push_back(edge->gid);
-              my_deleted_edges1.push_back(edge->gid);
+              if (!is_vt) {
+                edge->deleted = true;
+                my_deleted_edges.push_back(edge->gid);
+                my_deleted_edges1.push_back(edge->gid);
+              } else {
+                auto [set_value, set_inserted] = vt_checks.insert({current->action, edge, {}});
+                if (set_inserted) {
+                  if (ProbeDeltasForDeletion(edge,current->action,{})) {
+                    my_deleted_edges.push_back(edge->gid);
+                    my_deleted_edges1.push_back(edge->gid);
+                  }
+                }
+              }
               break;
             }
             case Delta::Action::RECREATE_OBJECT: {

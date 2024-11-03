@@ -416,6 +416,11 @@ class Storage final {
     /// @throw std::bad_alloc
     void Abort();
 
+    using ve_t = std::tuple<EdgeTypeId, Vertex *, EdgeRef>;
+    using add_info_t = std::variant<LabelId,PropertyId,ve_t, std::monostate>;
+
+
+
     void FinalizeTransaction();
 
    private:
@@ -430,6 +435,9 @@ class Storage final {
 
     /// @throw std::bad_alloc
     Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, storage::Gid gid, const TemporalPeriod& vt);
+
+    bool ProbeDeltasForDeletion(Vertex* vertex, Delta::Action action, const add_info_t& infos);
+    bool ProbeDeltasForDeletion(Edge* vertex, Delta::Action action, const add_info_t& infos);
 
     Storage *storage_;
     std::shared_lock<utils::RWLock> storage_guard_;
