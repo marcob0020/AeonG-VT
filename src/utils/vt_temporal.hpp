@@ -75,6 +75,22 @@ public:
     static VTDateTime constexpr min() noexcept {
         return VTDateTime(std::numeric_limits<int64_t>::lowest());
     }
+
+    static VTDateTime prev(const VTDateTime& val) noexcept {
+        return VTDateTime(val.microseconds - 1);
+    }
+
+    static VTDateTime next(const VTDateTime& val) noexcept {
+        return VTDateTime(val.microseconds + 1);
+    }
+
+    static VTDateTime greater(const VTDateTime& val1, const VTDateTime& val2) noexcept {
+        return val1>=val2?val1:val2;
+    }
+
+    static VTDateTime less(const VTDateTime& val1, const VTDateTime& val2) noexcept {
+        return val1<val2?val1:val2;
+    }
 };
 
 struct VTDateTimeHash {

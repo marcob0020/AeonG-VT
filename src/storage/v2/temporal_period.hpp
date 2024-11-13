@@ -26,8 +26,31 @@ struct TemporalPeriod {
     return first <= other.second && other.first <= second;
   }
 
+  bool overlaps_strict(const TemporalPeriod &other) const {
+    return overlaps(other) && !equals(other) && in_between(other);
+  }
+
+  ///@returns true if this timespan is completely included in the other timespan
+  ///Es. this       | | | | |#| | | | | |
+  ///Es. other      | | |#|#|#|#|#| | | |
   bool included(const TemporalPeriod &other) const {
-    return first <= other.first && second <= other.second;
+    return other.includes(*this);
+  }
+
+  ///@returns true if this timespan includes completely the other
+  ///Es. this       | | |#|#|#|#|#| | | |
+  ///Es. other      | | | | |#| | | | | |
+  bool includes(const TemporalPeriod &other) const {
+    return first <= other.first && second >= other.second;
+  }
+
+  ///@returns true if this timespan overlaps on start or on end with the other timespan
+  bool in_between(const TemporalPeriod &other) const {
+    return first >= other.first && first <= other.second || second >= other.first && second <= other.second;
+  }
+
+  bool equals(const TemporalPeriod& other) const {
+    return first == other.first && second == other.second;
   }
 
   bool whole() const {
@@ -40,6 +63,10 @@ struct TemporalPeriod {
 
   TemporalPeriod merges(const TemporalPeriod &other) const {
     return TemporalPeriod(std::min(first, other.first), std::max(second, other.second));
+  }
+
+  std::pair<utils::VTDateTime, utils::VTDateTime> get_pair() const {
+    return std::make_pair(first, second);
   }
 };
 

@@ -19,6 +19,7 @@
 #include "storage/v2/edge_ref.hpp"
 #include "storage/v2/id_types.hpp"
 #include "storage/v2/property_store.hpp"
+#include "storage/v2/vt_store.hpp"
 #include "utils/spin_lock.hpp"
 
 namespace storage {
@@ -40,6 +41,7 @@ struct Vertex {
 
   std::vector<LabelId> labels;
   PropertyStore properties;
+  VtStore vt_store;
 
   std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> in_edges;
   std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> out_edges;

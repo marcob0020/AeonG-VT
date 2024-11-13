@@ -9,18 +9,20 @@
 namespace utils {
 template <typename T, typename container = std::vector<T>>
 class interval {
+  using Period = std::pair<utils::VTDateTime, utils::VTDateTime>;
 private:
   container& _container_interval;
   bool fully_covered = false;
+  Period from_to;
 public:
-  using Period = std::pair<utils::VTDateTime, utils::VTDateTime>;
 
-  explicit interval(const container& container_interval) : _container_interval(container_interval) {}
-  interval(): _container_interval() {
-  };
+  explicit interval(const container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
+  interval(): _container_interval(), from_to({VTDateTime::min(), VTDateTime::max()}) {}
+  interval(const Period& interval) : _container_interval(), from_to(interval) {}
 
-  interval(const interval& other): _container_interval(other._container_interval) {}
-  interval(interval&& other) noexcept: _container_interval(std::move(other._container_interval)) {}
+
+  interval(const interval<T, container>& other): _container_interval(other._container_interval), from_to(other.from_to) {}
+  interval(interval&& other) noexcept: _container_interval(std::move(other._container_interval)), from_to(other.from_to) {}
 
   void add(Period from_to, const T& value) {
     //TODO
@@ -49,6 +51,8 @@ public:
   bool is_single(Period from_to) const {
     //TODO
   }
+
+  interval<T, container> split(Period from_to) const {}
 
 
 

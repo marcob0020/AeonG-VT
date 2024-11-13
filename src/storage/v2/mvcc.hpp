@@ -380,4 +380,8 @@ inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, const 
   return delta;
 }
 
+inline void EncodeIntoVtStore(Delta *delta) {
+
+}
+
 }  // namespace storage

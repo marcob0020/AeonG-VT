@@ -84,6 +84,10 @@ namespace query{
         return {get_first(), get_second()};
       }
 
+      bool whole() {
+        return type != TemporalQueryType::AS_OF && first == utils::VTDateTime::min() && second == utils::VTDateTime::max();
+      }
+
       friend std::ostream &operator<<(std::ostream &os, const TemporalFilter &ldt) {
         os << "Type: " << ldt.type;
         os << "{" << ldt.first << "," << ldt.second << "}";
