@@ -670,7 +670,7 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const Ver
   return new_vertex;
 }
 
-storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, TemporalPeriod> & maybe_props,history_delta::HistoryContext& historyContext_) {
+storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, utils::TimeSpan> & maybe_props,history_delta::HistoryContext& historyContext_) {
   Delta* deltas=another.vertex_->delta;
   //Current info
   std::vector<LabelId> maybe_labels=another.vertex_->labels;
@@ -735,7 +735,7 @@ storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(const EdgeAccess
   maybe_properties[property_id]=property_value;
 
   //VT
-  TemporalPeriod vt = TemporalPeriod(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
+  TimeSpan vt = utils::TimeSpan(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
 
   auto property_id2 = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("transaction_te"));
   auto property_value2 = storage::PropertyValue(gid_delta_["TT_TE"].get<int64_t>());
@@ -781,7 +781,7 @@ storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(storage::History
   auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
 
   //VT
-  TemporalPeriod vt = TemporalPeriod(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
+  TimeSpan vt = utils::TimeSpan(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
 
   // std::cout<<"CreateHistoryEdgeFromKV2:"<<tt_ts<<" "<<tt_te<<" "<<edge_.from_gid.AsUint()<<" "<<edge_.to_gid.AsUint()<<"\n";
   //TODO edges
@@ -819,8 +819,8 @@ Result<std::vector<EdgeAccessor>> Storage::Accessor::Edges(std::vector<std::tupl
     return std::move(ret);
 }
 
-utils::timeline<bool> EdgeVt(Vertex* from_vertex, bool ingoing, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const query::TemporalFilter& vt) {
-  utils::timeline<bool> from_coverage = ingoing? from_vertex->vt_store.GetIngoingEdge(edge_, vt.get_period()) : from_vertex->vt_store.GetOutgoingEdge(edge_, vt.get_period());
+utils::timeline EdgeVt(Vertex* from_vertex, bool ingoing, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TemporalFilter& vt) {
+  utils::timeline from_coverage = ingoing? from_vertex->vt_store.GetIngoingEdge(edge_, vt.get_span()) : from_vertex->vt_store.GetOutgoingEdge(edge_, vt.get_span());
   auto before_delta=from_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -829,28 +829,28 @@ utils::timeline<bool> EdgeVt(Vertex* from_vertex, bool ingoing, std::tuple<EdgeT
         if (ingoing)
           continue;
 
-        from_coverage.remove(before_delta->vt.get_pair());
+        from_coverage.remove(before_delta->vt);
         break;
       }
       case storage::Delta::Action::REMOVE_OUT_EDGE: {
         if (ingoing)
             continue;
 
-        from_coverage.add(before_delta->vt.get_pair(), true);
+        from_coverage.add(before_delta->vt);
         break;
       }
       case storage::Delta::Action::ADD_IN_EDGE: {
         if(!ingoing)
           continue;
 
-        from_coverage.remove(before_delta->vt.get_pair());
+        from_coverage.remove(before_delta->vt);
         break;
       }
       case storage::Delta::Action::REMOVE_IN_EDGE:{
         if(!ingoing)
           continue;
 
-        from_coverage.add(before_delta->vt.get_pair(), true);
+        from_coverage.add(before_delta->vt);
         break;
       }
       default:break;
@@ -884,7 +884,7 @@ VertexAccessor Storage::Accessor::CreateVertex() {
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
-VertexAccessor Storage::Accessor::CreateVertex(const TemporalPeriod& vt) {
+VertexAccessor Storage::Accessor::CreateVertex(const utils::TimeSpan& vt) {
   OOMExceptionEnabler oom_exception;
   auto gid = storage_->vertex_id_.fetch_add(1, std::memory_order_acq_rel);
   auto acc = storage_->vertices_.access();
@@ -922,7 +922,7 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid) {
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
-VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const TemporalPeriod& vt) {
+VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const utils::TimeSpan& vt) {
   OOMExceptionEnabler oom_exception;
   // NOTE: When we update the next `vertex_id_` here we perform a RMW
   // (read-modify-write) operation that ISN'T atomic! But, that isn't an issue
@@ -1039,7 +1039,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
                                             config_, true);
 }
 
-Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAccessor *vertex, const TemporalPeriod& vt) {
+Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAccessor *vertex, const utils::TimeSpan& vt) {
   MG_ASSERT(vertex->transaction_ == &transaction_,
             "VertexAccessor must be from the same transaction as the storage "
             "accessor when deleting a vertex!");
@@ -1254,7 +1254,7 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
 }
 
 Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Storage::Accessor::DetachDeleteVertex(
-    VertexAccessor *vertex, const TemporalPeriod& vt) {
+    VertexAccessor *vertex, const utils::TimeSpan& vt) {
   using ReturnType = std::pair<VertexAccessor, std::vector<EdgeAccessor>>;
 
   MG_ASSERT(vertex->transaction_ == &transaction_,
@@ -1521,7 +1521,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
                       &storage_->constraints_, config_);
 }
 
-Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, const TemporalPeriod& vt) {
+Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, const utils::TimeSpan& vt) {
   OOMExceptionEnabler oom_exception;
   MG_ASSERT(from->transaction_ == to->transaction_,
             "VertexAccessors must be from the same transaction when creating "
@@ -1816,7 +1816,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
 }
 
 Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type,
-                                                   storage::Gid gid, const TemporalPeriod& vt) {
+                                                   storage::Gid gid, const utils::TimeSpan& vt) {
   OOMExceptionEnabler oom_exception;
   MG_ASSERT(from->transaction_ == to->transaction_,
             "VertexAccessors must be from the same transaction when creating "
@@ -2171,7 +2171,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
                                           &storage_->indices_, &storage_->constraints_, config_, true);
 }
 
-Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *edge, const TemporalPeriod& vt) {
+Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *edge, const utils::TimeSpan& vt) {
   MG_ASSERT(edge->transaction_ == &transaction_,
             "EdgeAccessor must be from the same transaction as the storage "
             "accessor when deleting an edge!");
@@ -2212,7 +2212,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   }
 
   auto from_ts=from_vertex->ve_tt_ts;
-  utils::timeline<bool> from_coverage; //todo
+  utils::timeline from_coverage; //todo
+
   auto before_delta=from_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -2243,7 +2244,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   }
 
   auto to_ts=to_vertex->ve_tt_ts;
-  utils::timeline<bool> to_coverage; //todo
+  utils::timeline to_coverage; //todo
+
   before_delta=to_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -2298,7 +2300,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     MG_ASSERT(!to_vertex->deleted, "Invalid database state!");
   }
 
-  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const utils::timeline<bool>& coverage) {
+  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const utils::timeline& coverage) {
     std::tuple<EdgeTypeId, Vertex *, EdgeRef> link(edge_type, vertex, edge_ref);
     if (coverage.covered({vt.first,vt.second}))
       return true;
@@ -2332,13 +2334,13 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     }
   }
 
-  auto createAndFillInDelta = [](utils::timeline<bool> vt_range, auto fillin_fn) {
+  auto createAndFillInDelta = [](const utils::timeline& vt_range, auto fillin_fn) {
     for (auto& vt: vt_range) {
       fillin_fn(vt);
     }
   };
 
-  utils::timeline<bool> vt_range
+  utils::timeline vt_range =
 
   if (config_.properties_on_edges) {
     auto *edge_ptr = edge_ref.ptr;

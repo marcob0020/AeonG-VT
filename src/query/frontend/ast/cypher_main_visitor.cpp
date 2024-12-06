@@ -2223,12 +2223,12 @@ antlrcpp::Any CypherMainVisitor::visitVt(MemgraphCypher::VtContext *ctx) {
   if(ctx->AS()){
     vt->vt_left_ =ctx->as_vliteral->accept(this);// ctx->_localctx->as_literal->accept(this);
     vt->vt_right_ =ctx->as_vliteral->accept(this);// ctx->_localctx->as_literal->accept(this);
-    vt->vt_query_type_ = TemporalQueryType::AS_OF;
+    vt->vt_query_type_ = utils::TemporalQueryType::AS_OF;
     return vt;
   }
   vt->vt_left_ = ctx->from_vliteral->accept(this);
   vt->vt_right_ = ctx->to_vliteral->accept(this);
-  vt->vt_query_type_ = TemporalQueryType::FROM_TO;
+  vt->vt_query_type_ = utils::TemporalQueryType::FROM_TO;
   return vt;
 }
 //marcob0020 edit end

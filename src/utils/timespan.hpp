@@ -6,50 +6,50 @@
 
 #include "utils/vt_temporal.hpp"
 
-namespace storage{
+namespace utils{
 
-struct TemporalPeriod {
+struct TimeSpan {
 
   utils::VTDateTime first;
   utils::VTDateTime second;
 
-  TemporalPeriod():first(utils::VTDateTime::min()),second(utils::VTDateTime::max()){}
+  TimeSpan():first(utils::VTDateTime::min()),second(utils::VTDateTime::max()){}
 
-  TemporalPeriod(const utils::VTDateTime& first, const utils::VTDateTime& second):first(first),second(second){}
+  TimeSpan(const utils::VTDateTime& first, const utils::VTDateTime& second):first(first),second(second){}
 
-  friend std::ostream &operator<<(std::ostream &os, const TemporalPeriod &ldt) {
+  friend std::ostream &operator<<(std::ostream &os, const TimeSpan &ldt) {
     os << "{" << ldt.first << "," << ldt.second << "}";
     return os;
   }
 
-  bool overlaps(const TemporalPeriod &other) const {
+  bool overlaps(const TimeSpan &other) const {
     return first <= other.second && other.first <= second;
   }
 
-  bool overlaps_strict(const TemporalPeriod &other) const {
+  bool overlaps_strict(const TimeSpan &other) const {
     return overlaps(other) && !equals(other) && in_between(other);
   }
 
   ///@returns true if this timespan is completely included in the other timespan
   ///Es. this       | | | | |#| | | | | |
   ///Es. other      | | |#|#|#|#|#| | | |
-  bool included(const TemporalPeriod &other) const {
+  bool included(const TimeSpan &other) const {
     return other.includes(*this);
   }
 
   ///@returns true if this timespan includes completely the other
   ///Es. this       | | |#|#|#|#|#| | | |
   ///Es. other      | | | | |#| | | | | |
-  bool includes(const TemporalPeriod &other) const {
+  bool includes(const TimeSpan &other) const {
     return first <= other.first && second >= other.second;
   }
 
   ///@returns true if this timespan overlaps on start or on end with the other timespan
-  bool in_between(const TemporalPeriod &other) const {
-    return first >= other.first && first <= other.second || second >= other.first && second <= other.second;
+  bool in_between(const TimeSpan &other) const {
+    return (first >= other.first && first <= other.second) || (second >= other.first && second <= other.second);
   }
 
-  bool equals(const TemporalPeriod& other) const {
+  bool equals(const TimeSpan& other) const {
     return first == other.first && second == other.second;
   }
 
@@ -61,12 +61,12 @@ struct TemporalPeriod {
     return first <= second;
   }
 
-  TemporalPeriod intersect(const TemporalPeriod &other) const {
-    return TemporalPeriod(std::max(first, other.first), std::min(other.second, second));
+  TimeSpan intersect(const TimeSpan &other) const {
+    return TimeSpan(std::max(first, other.first), std::min(other.second, second));
   }
 
-  TemporalPeriod merges(const TemporalPeriod &other) const {
-    return TemporalPeriod(std::min(first, other.first), std::max(second, other.second));
+  TimeSpan merges(const TimeSpan &other) const {
+    return TimeSpan(std::min(first, other.first), std::max(second, other.second));
   }
 
   std::pair<utils::VTDateTime, utils::VTDateTime> get_pair() const {

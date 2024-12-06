@@ -22,7 +22,7 @@
 #include "utils/memory_tracker.hpp"
 
 #include <string>
-#include <query/temporal_filter.hpp>
+#include <utils/temporal_filter.hpp>
 
 namespace storage {
 
@@ -61,7 +61,7 @@ std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View v
   return {exists, deleted};
 }
 
-std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View view, const query::TemporalFilter& vt) {
+std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View view, const utils::TemporalFilter& vt) {
   bool exists = true;
   bool deleted = false;
   Delta *delta = nullptr;
@@ -70,7 +70,7 @@ std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View v
     deleted = vertex->deleted;
     delta = vertex->delta;
   }
-  ApplyDeltasForRead(transaction, delta, view, vt, [&](const Delta &delta, TemporalPeriod& vt_intersect) {
+  ApplyDeltasForRead(transaction, delta, view, vt, [&](const Delta &delta, utils::TimeSpan& vt_intersect) {
     switch (delta.action) {
       case Delta::Action::ADD_LABEL:
       case Delta::Action::REMOVE_LABEL:
@@ -130,7 +130,7 @@ std::optional<VertexAccessor> VertexAccessor::Create(Vertex *vertex, Transaction
 }
 
 std::optional<VertexAccessor> VertexAccessor::Creates(Vertex *vertex, Transaction *transaction, Indices *indices,
-                                                       Constraints *constraints, Config::Items config, View view, const query::TemporalFilter& vt){
+                                                       Constraints *constraints, Config::Items config, View view, const utils::TemporalFilter& vt){
 
   const auto [exists, deleted] = detail::IsVisible(vertex, transaction, view, vt);
   if(!exists) return std::nullopt;
@@ -139,7 +139,7 @@ std::optional<VertexAccessor> VertexAccessor::Creates(Vertex *vertex, Transactio
 
 
 std::optional<VertexAccessor> VertexAccessor::Create(Vertex *vertex, Transaction *transaction, Indices *indices,
-                                                       Constraints *constraints, Config::Items config, View view, const query::TemporalFilter& vt) {
+                                                       Constraints *constraints, Config::Items config, View view, const utils::TemporalFilter& vt) {
   if (const auto [exists, deleted] = detail::IsVisible(vertex, transaction, view, vt); !exists || deleted) {
     return std::nullopt;
   }
@@ -151,10 +151,10 @@ bool VertexAccessor::HasTemporalFeatures() const {
   return vertex_->has_vt;
 }
 
-query::TemporalFilter VertexAccessor::GetNowFilter() const {
-  query::TemporalFilter filter;
+utils::TemporalFilter VertexAccessor::GetNowFilter() const {
+  utils::TemporalFilter filter;
   filter.first = transaction_->transaction_now;
-  filter.type = query::TemporalQueryType::AS_OF;
+  filter.type = utils::TemporalQueryType::AS_OF;
 
   return filter;
 }
@@ -164,7 +164,7 @@ bool VertexAccessor::IsVisible(View view) const {
   return exists && (for_deleted_ || !deleted);
 }
 
-bool VertexAccessor::IsVisible(View view, const query::TemporalFilter& vt) const {
+bool VertexAccessor::IsVisible(View view, const utils::TemporalFilter& vt) const {
   const auto [exists, deleted] = detail::IsVisible(vertex_, transaction_, view, vt);
   return exists && (for_deleted_ || !deleted);
 }
@@ -245,7 +245,7 @@ Result<bool> VertexAccessor::AddLabel(LabelId label) {
   return true;
 }
 
-Result<bool> VertexAccessor::AddLabel(LabelId label, const TemporalPeriod& vt) {
+Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) {
   utils::MemoryTracker::OutOfMemoryExceptionEnabler oom_exception;
   std::lock_guard<utils::SpinLock> guard(vertex_->lock);
 
@@ -397,7 +397,7 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label) {
   return true;
 }
 
-Result<bool> VertexAccessor::RemoveLabel(LabelId label, const TemporalPeriod& vt) {
+Result<bool> VertexAccessor::RemoveLabel(LabelId label, const utils::TimeSpan& vt) {
   std::lock_guard<utils::SpinLock> guard(vertex_->lock);
 
   if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
@@ -521,7 +521,7 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view) const {
   return has_label;
 }
 
-Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const query::TemporalFilter& vt) const {
+Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   bool has_label = false;
@@ -532,7 +532,7 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const query::Tem
     has_label = std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end();
     delta = vertex_->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &has_label, label](const Delta &delta, TemporalPeriod vt_intersect) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &has_label, label](const Delta &delta, utils::TimeSpan vt_intersect) {
     switch (delta.action) {
       case Delta::Action::REMOVE_LABEL: {
         if (delta.label == label) {
@@ -618,7 +618,7 @@ Result<std::vector<LabelId>> VertexAccessor::Labels(View view) const {
   return std::move(labels);
 }
 
-Result<std::vector<LabelId>> VertexAccessor::Labels(View view, const query::TemporalFilter& vt) const {
+Result<std::vector<LabelId>> VertexAccessor::Labels(View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   std::vector<LabelId> labels;
@@ -747,7 +747,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   return std::move(current_value);
 }
 
-Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt) {
+Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const PropertyValue &value, const utils::TimeSpan& vt) {
   utils::MemoryTracker::OutOfMemoryExceptionEnabler oom_exception;
   std::lock_guard<utils::SpinLock> guard(vertex_->lock);
 
@@ -903,7 +903,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties() {
   return std::move(properties);
 }
 
-Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(const TemporalPeriod& vt) {
+Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(const utils::TimeSpan& vt) {
   std::lock_guard<utils::SpinLock> guard(vertex_->lock);
 
   if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
@@ -1049,7 +1049,7 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
   return std::move(value);
 }
 
-Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
+Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
@@ -1064,7 +1064,7 @@ Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(Proper
   }
 
   //TODO: make sure that the order is correct and that the interval will be correctly formed
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, TemporalPeriod vt_intersection) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         if (delta.property.key == property) {
@@ -1146,7 +1146,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
   return std::move(properties);
 }
 
-Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view, const query::TemporalFilter& vt) const {
+Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   std::map<PropertyId, PropertyValue> properties;
@@ -1157,7 +1157,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
     properties = vertex_->properties.Properties();
     delta = vertex_->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &properties](const Delta &delta, TemporalPeriod vt_intersection) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &properties](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         auto it = properties.find(delta.property.key);
@@ -1276,7 +1276,7 @@ Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const std::
   return std::move(ret);
 }
 
-Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const query::TemporalFilter& vt, const std::vector<EdgeTypeId> &edge_types,
+Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const utils::TemporalFilter& vt, const std::vector<EdgeTypeId> &edge_types,
                                                           const VertexAccessor *destination) const {
   MG_ASSERT(!destination || destination->transaction_ == transaction_, "Invalid accessor!");
   bool exists = true;
@@ -1300,7 +1300,7 @@ Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const query
     delta = vertex_->delta;
   }
   ApplyDeltasForRead(
-      transaction_, delta, view, vt, [&exists, &deleted, &in_edges, &edge_types, &destination](const Delta &delta, TemporalPeriod vt_intersection) {
+      transaction_, delta, view, vt, [&exists, &deleted, &in_edges, &edge_types, &destination](const Delta &delta, utils::TimeSpan vt_intersection) {
         switch (delta.action) {
           case Delta::Action::ADD_IN_EDGE: {
             if (destination && delta.vertex_edge.vertex != destination->vertex_) break;
@@ -1438,7 +1438,7 @@ Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const std:
   return std::move(ret);
 }
 
-Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const query::TemporalFilter& vt, const std::vector<EdgeTypeId> &edge_types,
+Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const utils::TemporalFilter& vt, const std::vector<EdgeTypeId> &edge_types,
                                                            const VertexAccessor *destination) const {
   MG_ASSERT(!destination || destination->transaction_ == transaction_, "Invalid accessor!");
   bool exists = true;
@@ -1462,7 +1462,7 @@ Result<std::vector<EdgeAccessor>> VertexAccessor::OutEdges(View view, const quer
     delta = vertex_->delta;
   }
   ApplyDeltasForRead(
-      transaction_, delta, view, vt, [&exists, &deleted, &out_edges, &edge_types, &destination](const Delta &delta, TemporalPeriod vt_intersection) {
+      transaction_, delta, view, vt, [&exists, &deleted, &out_edges, &edge_types, &destination](const Delta &delta, utils::TimeSpan vt_intersection) {
         switch (delta.action) {
           case Delta::Action::ADD_OUT_EDGE: {
             if (destination && delta.vertex_edge.vertex != destination->vertex_) break;

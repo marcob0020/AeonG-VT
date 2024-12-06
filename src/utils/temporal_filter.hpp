@@ -4,11 +4,9 @@
 
 #pragma once
 
-#include <storage/v2/temporal_period.hpp>
+#include "timespan.hpp"
 
-#include "utils/vt_temporal.hpp"
-
-namespace query{
+namespace utils{
     enum class TemporalQueryType {
       NONE = 0,
       AS_OF,
@@ -37,8 +35,8 @@ namespace query{
     struct TemporalFilter {
       TemporalQueryType type;
 
-      utils::VTDateTime first;
-      utils::VTDateTime second;
+      VTDateTime first;
+      VTDateTime second;
 
       TemporalFilter():type(TemporalQueryType::NONE),first(0),second(0){}
 
@@ -80,12 +78,12 @@ namespace query{
         }
       }
 
-      storage::TemporalPeriod get_period() const {
+      utils::TimeSpan get_span() const {
         return {get_first(), get_second()};
       }
 
       bool whole() {
-        return type != TemporalQueryType::AS_OF && first == utils::VTDateTime::min() && second == utils::VTDateTime::max();
+        return type != TemporalQueryType::AS_OF && first == VTDateTime::min() && second == VTDateTime::max();
       }
 
       friend std::ostream &operator<<(std::ostream &os, const TemporalFilter &ldt) {

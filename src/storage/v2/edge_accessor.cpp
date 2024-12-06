@@ -25,10 +25,10 @@ bool EdgeAccessor::HasTemporalFeatures() const {
   return edge_.ptr->has_vt;
 }
 
-query::TemporalFilter EdgeAccessor::GetNowFilter() const {
-  query::TemporalFilter filter;
+utils::TemporalFilter EdgeAccessor::GetNowFilter() const {
+  utils::TemporalFilter filter;
   filter.first = transaction_->transaction_now;
-  filter.type = query::TemporalQueryType::AS_OF;
+  filter.type = utils::TemporalQueryType::AS_OF;
 
   return filter;
 }
@@ -67,7 +67,7 @@ bool EdgeAccessor::IsVisible(const View view) const {
   return exists && (for_deleted_ || !deleted);
 }
 
-bool EdgeAccessor::IsVisible(const View view, const query::TemporalFilter& vt) const {
+bool EdgeAccessor::IsVisible(const View view, const utils::TemporalFilter& vt) const {
   bool deleted = true;
   bool exists = true;
   Delta *delta = nullptr;
@@ -76,7 +76,7 @@ bool EdgeAccessor::IsVisible(const View view, const query::TemporalFilter& vt) c
     deleted = edge_.ptr->deleted;
     delta = edge_.ptr->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&](const Delta &delta, TemporalPeriod& vt_intersect) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&](const Delta &delta, utils::TimeSpan& vt_intersect) {
     switch (delta.action) {
       case Delta::Action::ADD_LABEL:
       case Delta::Action::REMOVE_LABEL:
@@ -203,7 +203,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   return std::move(current_value);
 }
 
-Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt) {
+Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, const PropertyValue &value, const utils::TimeSpan& vt) {
   utils::MemoryTracker::OutOfMemoryExceptionEnabler oom_exception;
   if (!config_.properties_on_edges) return Error::PROPERTIES_DISABLED;
 
@@ -334,7 +334,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties() {
   return std::move(properties);
 }
 
-Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const TemporalPeriod& vt) {
+Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const utils::TimeSpan& vt) {
   if (!config_.properties_on_edges) return Error::PROPERTIES_DISABLED;
 
   std::lock_guard<utils::SpinLock> guard(edge_.ptr->lock);
@@ -443,7 +443,7 @@ Result<PropertyValue> EdgeAccessor::GetProperty(PropertyId property, View view) 
   return std::move(value);
 }
 
-Result<utils::valued_timeline<PropertyValue>> EdgeAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
+Result<utils::valued_timeline<PropertyValue>> EdgeAccessor::GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
@@ -457,7 +457,7 @@ Result<utils::valued_timeline<PropertyValue>> EdgeAccessor::GetProperty(Property
     value = edge_.ptr->properties.GetProperty(property);
     delta = edge_.ptr->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, TemporalPeriod& vt_intersection) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, utils::TimeSpan& vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         if (delta.property.key == property) {
@@ -538,7 +538,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view) 
   return std::move(properties);
 }
 
-  Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view, const query::TemporalFilter& vt) const {
+  Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view, const utils::TemporalFilter& vt) const {
   if (!config_.properties_on_edges) return std::map<PropertyId, PropertyValue>{};
   bool exists = true;
   bool deleted = false;

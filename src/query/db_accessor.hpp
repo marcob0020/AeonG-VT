@@ -62,7 +62,7 @@ class EdgeAccessor final {
     return impl_.IsVisible(view);
   }
 
-  bool isVisible(storage::View view, const TemporalFilter& vt) const {
+  bool isVisible(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return impl_.IsVisible(view, vt);
     return impl_.IsVisible(view);
@@ -76,52 +76,52 @@ class EdgeAccessor final {
     return impl_.Properties(view);
   }
 
-  auto Properties(storage::View view, const TemporalFilter& vt) const {
+  auto Properties(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return impl_.Properties(view, vt);
     return impl_.Properties(view);
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key) const {
-    storage::TemporalPeriod nowPeriod = impl_.GetNowFilter().get_period();
+    utils::TimeSpan nowTimespan = impl_.GetNowFilter().get_span();
 
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(nowPeriod);
+      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(nowTimespan);
     return impl_.GetProperty(key, view);
   }
 
-  storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const TemporalFilter& vt) const {
+  storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, vt)->get_single(vt.get_period());
+      return impl_.GetProperty(key, view, vt)->get_single(vt.get_span());
     return impl_.GetProperty(key, view);
   }
 
   storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value) {
     if (impl_.HasTemporalFeatures())
-      return impl_.SetProperty(key, value, storage::TemporalPeriod());
+      return impl_.SetProperty(key, value, utils::TimeSpan());
     return impl_.SetProperty(key, value);
   }
 
-  storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value, const TemporalFilter& vt) {
-    return impl_.SetProperty(key, value, vt.get_period());
+  storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value, const utils::TemporalFilter& vt) {
+    return impl_.SetProperty(key, value, vt.get_span());
   }
 
   storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key) {
     return SetProperty(key, storage::PropertyValue());
   }
 
-  storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key, const TemporalFilter& vt) {
+  storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key, const utils::TemporalFilter& vt) {
     return SetProperty(key, storage::PropertyValue(), vt);
   }
 
   storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties() {
     if (impl_.HasTemporalFeatures())
-      return impl_.ClearProperties(storage::TemporalPeriod());
+      return impl_.ClearProperties(utils::TimeSpan());
     return impl_.ClearProperties();
   }
 
-  storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties(const TemporalFilter& vt) {
-    return impl_.ClearProperties(vt.get_period());
+  storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties(const utils::TemporalFilter& vt) {
+    return impl_.ClearProperties(vt.get_span());
   }
 
   VertexAccessor To() const;
@@ -166,7 +166,7 @@ class VertexAccessor final {
     return impl_.IsVisible(view);
   }
 
-  bool IsVisible(storage::View view, const TemporalFilter& vt) const {
+  bool IsVisible(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return impl_.IsVisible(view, vt);
     return impl_.IsVisible(view);
@@ -178,7 +178,7 @@ class VertexAccessor final {
     return impl_.Labels(view);
   }
 
-  auto Labels(storage::View view, const TemporalFilter& vt) const {
+  auto Labels(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return impl_.Labels(view, vt);
     return impl_.Labels(view);
@@ -186,22 +186,22 @@ class VertexAccessor final {
 
   storage::Result<bool> AddLabel(storage::LabelId label) {
     if (impl_.HasTemporalFeatures())
-      return impl_.AddLabel(label, storage::TemporalPeriod());
+      return impl_.AddLabel(label, utils::TimeSpan());
     return impl_.AddLabel(label);
   }
 
-  storage::Result<bool> AddLabel(storage::LabelId label, const TemporalFilter& vt) {
-    return impl_.AddLabel(label, vt.get_period());
+  storage::Result<bool> AddLabel(storage::LabelId label, const utils::TemporalFilter& vt) {
+    return impl_.AddLabel(label, vt.get_span());
   }
 
   storage::Result<bool> RemoveLabel(storage::LabelId label) {
     if (impl_.HasTemporalFeatures())
-      return impl_.RemoveLabel(label, storage::TemporalPeriod());
+      return impl_.RemoveLabel(label, utils::TimeSpan());
     return impl_.RemoveLabel(label);
   }
 
-  storage::Result<bool> RemoveLabel(storage::LabelId label, const TemporalFilter& vt) {
-    return impl_.RemoveLabel(label, vt.get_period());
+  storage::Result<bool> RemoveLabel(storage::LabelId label, const utils::TemporalFilter& vt) {
+    return impl_.RemoveLabel(label, vt.get_span());
   }
 
   storage::Result<bool> HasLabel(storage::View view, storage::LabelId label) const {
@@ -210,7 +210,7 @@ class VertexAccessor final {
     return impl_.HasLabel(label, view);
   }
 
-  storage::Result<bool> HasLabel(storage::View view, storage::LabelId label, const TemporalFilter& vt) const {
+  storage::Result<bool> HasLabel(storage::View view, storage::LabelId label, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return impl_.HasLabel(label, view, vt);
     return impl_.HasLabel(label, view);
@@ -222,52 +222,52 @@ class VertexAccessor final {
     return impl_.Properties(view);
   }
 
-  auto Properties(storage::View view, const TemporalFilter& vt) const {
+  auto Properties(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return impl_.Properties(view, vt);
     return impl_.Properties(view);
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key) const {
-    storage::TemporalPeriod nowPeriod = impl_.GetNowFilter().get_period();
+    utils::TimeSpan nowTimespan = impl_.GetNowFilter().get_span();
 
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(nowPeriod);
+      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(nowTimespan);
     return impl_.GetProperty(key, view);
   }
 
-  storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const TemporalFilter& vt) const {
+  storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, vt)->get_single(vt.get_period());
+      return impl_.GetProperty(key, view, vt)->get_single(vt.get_span());
     return impl_.GetProperty(key, view);
   }
 
   storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value) {
     if (impl_.HasTemporalFeatures())
-      return impl_.SetProperty(key, value, storage::TemporalPeriod());
+      return impl_.SetProperty(key, value, utils::TimeSpan());
     return impl_.SetProperty(key, value);
   }
 
-  storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value, const TemporalFilter& vt) {
-    return impl_.SetProperty(key, value, vt.get_period());
+  storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value, const utils::TemporalFilter& vt) {
+    return impl_.SetProperty(key, value, vt.get_span());
   }
 
   storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key) {
     return SetProperty(key, storage::PropertyValue());
   }
 
-  storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key, const TemporalFilter& vt) {
+  storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key, const utils::TemporalFilter& vt) {
     return SetProperty(key, storage::PropertyValue(), vt);
   }
 
   storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties() {
     if (impl_.HasTemporalFeatures())
-      return impl_.ClearProperties(storage::TemporalPeriod());
+      return impl_.ClearProperties(utils::TimeSpan());
     return impl_.ClearProperties();
   }
 
-  storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties(const TemporalFilter& vt) {
-    return impl_.ClearProperties(vt.get_period());
+  storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties(const utils::TemporalFilter& vt) {
+    return impl_.ClearProperties(vt.get_span());
   }
 
 
@@ -320,20 +320,20 @@ class VertexAccessor final {
     return iter::imap(MakeEdgeAccessor, std::move(*maybe_edges));
   }
 
-  auto InEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types, const TemporalFilter& vt) const
+  auto InEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types, const utils::TemporalFilter& vt) const
       -> storage::Result<decltype(iter::imap(MakeEdgeAccessor, *impl_.InEdges(view)))> {
     auto maybe_edges = impl_.HasTemporalFeatures()? impl_.InEdges(view, vt, edge_types) : impl_.InEdges(view, edge_types);
     if (maybe_edges.HasError()) return maybe_edges.GetError();
     return iter::imap(MakeEdgeAccessor, std::move(*maybe_edges));
   }
 
-  auto InEdges(storage::View view, const TemporalFilter& vt) const {
+  auto InEdges(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return InEdges(view, {}, vt);
     return InEdges(view, std::vector<storage::EdgeTypeId>());
   }
 
-  auto InEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types, const VertexAccessor &dest, const TemporalFilter& vt) const
+  auto InEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types, const VertexAccessor &dest, const utils::TemporalFilter& vt) const
       -> storage::Result<decltype(iter::imap(MakeEdgeAccessor, *impl_.InEdges(view)))> {
     auto maybe_edges = impl_.HasTemporalFeatures()? impl_.InEdges(view, vt, edge_types, &dest.impl_) :impl_.InEdges(view, edge_types, &dest.impl_);
     if (maybe_edges.HasError()) return maybe_edges.GetError();
@@ -362,14 +362,14 @@ class VertexAccessor final {
     return iter::imap(MakeEdgeAccessor, std::move(*maybe_edges));
   }
 
-  auto OutEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types, const TemporalFilter& vt) const
+  auto OutEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types, const utils::TemporalFilter& vt) const
       -> storage::Result<decltype(iter::imap(MakeEdgeAccessor, *impl_.OutEdges(view)))> {
     auto maybe_edges = impl_.HasTemporalFeatures() ? impl_.OutEdges(view, vt, edge_types) :  impl_.OutEdges(view, edge_types);
     if (maybe_edges.HasError()) return maybe_edges.GetError();
     return iter::imap(MakeEdgeAccessor, std::move(*maybe_edges));
   }
 
-  auto OutEdges(storage::View view, const TemporalFilter& vt) const {
+  auto OutEdges(storage::View view, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
       return OutEdges(view, {}, vt);
 
@@ -377,7 +377,7 @@ class VertexAccessor final {
   }
 
   auto OutEdges(storage::View view, const std::vector<storage::EdgeTypeId> &edge_types,
-                const VertexAccessor &dest, const TemporalFilter& vt) const
+                const VertexAccessor &dest, const utils::TemporalFilter& vt) const
       -> storage::Result<decltype(iter::imap(MakeEdgeAccessor, *impl_.OutEdges(view)))> {
     auto maybe_edges = impl_.HasTemporalFeatures() ? impl_.OutEdges(view, vt, edge_types, &dest.impl_) : impl_.OutEdges(view, edge_types, &dest.impl_);
     if (maybe_edges.HasError()) return maybe_edges.GetError();
@@ -552,8 +552,8 @@ class DbAccessor final {
     return VertexAccessor(accessor_->CreateVertex());
   }
 
-  VertexAccessor InsertVertex(const TemporalFilter& vt) {
-    return VertexAccessor(accessor_->CreateVertex(vt.get_period()));
+  VertexAccessor InsertVertex(const utils::TemporalFilter& vt) {
+    return VertexAccessor(accessor_->CreateVertex(vt.get_span()));
   }
 
   storage::Result<EdgeAccessor> InsertEdge(VertexAccessor *from, VertexAccessor *to,
@@ -564,14 +564,14 @@ class DbAccessor final {
   }
 
   storage::Result<EdgeAccessor> InsertEdge(VertexAccessor *from, VertexAccessor *to,
-                                           const storage::EdgeTypeId &edge_type, const TemporalFilter& vt) {
-    auto maybe_edge = accessor_->CreateEdge(&from->impl_, &to->impl_, edge_type, vt.get_period());
+                                           const storage::EdgeTypeId &edge_type, const utils::TemporalFilter& vt) {
+    auto maybe_edge = accessor_->CreateEdge(&from->impl_, &to->impl_, edge_type, vt.get_span());
     if (maybe_edge.HasError()) return storage::Result<EdgeAccessor>(maybe_edge.GetError());
     return EdgeAccessor(*maybe_edge);
   }
 
   storage::Result<std::optional<EdgeAccessor>> RemoveEdge(EdgeAccessor *edge) {
-    auto res = edge->impl_.HasTemporalFeatures() ? accessor_->DeleteEdge(&edge->impl_, storage::TemporalPeriod()) : accessor_->DeleteEdge(&edge->impl_);
+    auto res = edge->impl_.HasTemporalFeatures() ? accessor_->DeleteEdge(&edge->impl_, utils::TimeSpan()) : accessor_->DeleteEdge(&edge->impl_);
 
     if (res.HasError()) {
       return res.GetError();
@@ -585,8 +585,8 @@ class DbAccessor final {
     return std::make_optional<EdgeAccessor>(*value);
   }
 
-  storage::Result<std::optional<EdgeAccessor>> RemoveEdge(EdgeAccessor *edge, const TemporalFilter& vt) {
-    auto res = accessor_->DeleteEdge(&edge->impl_, vt.get_period());
+  storage::Result<std::optional<EdgeAccessor>> RemoveEdge(EdgeAccessor *edge, const utils::TemporalFilter& vt) {
+    auto res = accessor_->DeleteEdge(&edge->impl_, vt.get_span());
     if (res.HasError()) {
       return res.GetError();
     }
@@ -603,7 +603,7 @@ class DbAccessor final {
       VertexAccessor *vertex_accessor) {
     using ReturnType = std::pair<VertexAccessor, std::vector<EdgeAccessor>>;
 
-    auto res = vertex_accessor->impl_.HasTemporalFeatures() ? accessor_->DetachDeleteVertex(&vertex_accessor->impl_, storage::TemporalPeriod()) : accessor_->DetachDeleteVertex(&vertex_accessor->impl_);
+    auto res = vertex_accessor->impl_.HasTemporalFeatures() ? accessor_->DetachDeleteVertex(&vertex_accessor->impl_, utils::TimeSpan()) : accessor_->DetachDeleteVertex(&vertex_accessor->impl_);
     if (res.HasError()) {
       return res.GetError();
     }
@@ -624,10 +624,10 @@ class DbAccessor final {
   }
 
   storage::Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> DetachRemoveVertex(
-      VertexAccessor *vertex_accessor, const TemporalFilter& vt) {
+      VertexAccessor *vertex_accessor, const utils::TemporalFilter& vt) {
     using ReturnType = std::pair<VertexAccessor, std::vector<EdgeAccessor>>;
 
-    auto res = accessor_->DetachDeleteVertex(&vertex_accessor->impl_, vt.get_period());
+    auto res = accessor_->DetachDeleteVertex(&vertex_accessor->impl_, vt.get_span());
     if (res.HasError()) {
       return res.GetError();
     }
@@ -648,7 +648,7 @@ class DbAccessor final {
   }
 
   storage::Result<std::optional<VertexAccessor>> RemoveVertex(VertexAccessor *vertex_accessor) {
-    auto res = vertex_accessor->impl_.HasTemporalFeatures() ?  accessor_->DeleteVertex(&vertex_accessor->impl_, storage::TemporalPeriod()) : accessor_->DeleteVertex(&vertex_accessor->impl_);
+    auto res = vertex_accessor->impl_.HasTemporalFeatures() ?  accessor_->DeleteVertex(&vertex_accessor->impl_, utils::TimeSpan()) : accessor_->DeleteVertex(&vertex_accessor->impl_);
     if (res.HasError()) {
       return res.GetError();
     }
@@ -661,8 +661,8 @@ class DbAccessor final {
     return std::make_optional<VertexAccessor>(*value);
   }
 
-  storage::Result<std::optional<VertexAccessor>> RemoveVertex(VertexAccessor *vertex_accessor, const TemporalFilter& vt) {
-    auto res = accessor_->DeleteVertex(&vertex_accessor->impl_, vt.get_period());
+  storage::Result<std::optional<VertexAccessor>> RemoveVertex(VertexAccessor *vertex_accessor, const utils::TemporalFilter& vt) {
+    auto res = accessor_->DeleteVertex(&vertex_accessor->impl_, vt.get_span());
     if (res.HasError()) {
       return res.GetError();
     }

@@ -50,7 +50,7 @@ class LogicalPlan {
   virtual const std::optional<std::pair<int,int>> &getHistoryInfo() const =0;
   //hjm end
 
-  virtual const std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> &getVTHistoryInfo() const =0;
+  virtual const std::optional<std::tuple<Expression*,Expression*,utils::TemporalQueryType>> &getVTHistoryInfo() const =0;
 };
 
 class CachedPlan {
@@ -134,7 +134,7 @@ class SingleNodeLogicalPlan final : public LogicalPlan {
       : root_(std::move(root)), cost_(cost), storage_(std::move(storage)), symbol_table_(symbol_table) {}
 
  SingleNodeLogicalPlan(std::unique_ptr<plan::LogicalOperator> root, double cost, AstStorage storage,
-                        const SymbolTable &symbol_table, const std::optional<std::pair<int,int>> &history_info, const std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> &vt_info)
+                        const SymbolTable &symbol_table, const std::optional<std::pair<int,int>> &history_info, const std::optional<std::tuple<Expression*,Expression*,utils::TemporalQueryType>> &vt_info)
       : root_(std::move(root)), cost_(cost), storage_(std::move(storage)), symbol_table_(symbol_table),history_info_(history_info), vt_info_(vt_info) {}
 
   const plan::LogicalOperator &GetRoot() const override { return *root_; }
@@ -146,7 +146,7 @@ class SingleNodeLogicalPlan final : public LogicalPlan {
     return history_info_;
   };
 
-  const std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> &getVTHistoryInfo() const override {
+  const std::optional<std::tuple<Expression*,Expression*,utils::TemporalQueryType>> &getVTHistoryInfo() const override {
     return vt_info_;
   }
 
@@ -160,7 +160,7 @@ class SingleNodeLogicalPlan final : public LogicalPlan {
   std::optional<std::pair<int,int>> history_info_;
   //hjm end
 
-  std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> vt_info_;
+  std::optional<std::tuple<Expression*,Expression*,utils::TemporalQueryType>> vt_info_;
 };
 
 std::unique_ptr<LogicalPlan> MakeLogicalPlan(AstStorage ast_storage, CypherQuery *query, const Parameters &parameters,

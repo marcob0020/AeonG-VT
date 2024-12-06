@@ -10,7 +10,7 @@
 #include "edge_ref.hpp"
 #include "id_types.hpp"
 #include "property_value.hpp"
-#include "temporal_period.hpp"
+#include "timespan.hpp"
 
 namespace storage {
   struct Vertex;
@@ -28,36 +28,36 @@ public:
 
   ~VtStore() = default;
 
-  /// Returns the currently stored values for property `property` in between the TemporalPeriod "vt". If the
+  /// Returns the currently stored values for property `property` in between the utils::TimeSpan "vt". If the
   /// property doesn't exist a Null value is returned. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::valued_timeline<PropertyValue> GetProperty(PropertyId property, const TemporalPeriod& vt) const;
+  utils::valued_timeline<PropertyValue> GetProperty(PropertyId property, const utils::TimeSpan& vt) const;
 
-  /// Checks whether the property `property` exists in the store in between the TemporalPeriod "vt". The time
+  /// Checks whether the property `property` exists in the store in between the utils::TimeSpan "vt". The time
   /// complexity of this function is O(n).
-  bool HasProperty(PropertyId property, const TemporalPeriod& vt) const;
+  bool HasProperty(PropertyId property, const utils::TimeSpan& vt) const;
 
   /// Checks whether the property `property` exists in the store at all. The time
   /// complexity of this function is O(n).
   bool HasProperty(PropertyId property) const;
 
   /// Checks whether the property `property` is equal to the specified value
-  /// `value` for all the filter in all the TemporalPeriod "vt" . This function doesn't perform any memory allocations while
+  /// `value` for all the filter in all the utils::TimeSpan "vt" . This function doesn't perform any memory allocations while
   /// performing the equality check. The time complexity of this function is
   /// O(n).
-  bool IsPropertyEqual(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt) const;
+  bool IsPropertyEqual(PropertyId property, const PropertyValue &value, const utils::TimeSpan& vt) const;
 
   /// Returns all properties ids currently stored in the store. The time complexity
   /// of this function is O(n).
   /// @throw std::bad_alloc
   std::vector<PropertyId> Properties() const;
 
-  /// Set a property value in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Set a property value in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt);
+  bool SetProperty(PropertyId property, const PropertyValue &value, const utils::TimeSpan& vt);
 
   /// Remove all properties and return `true` if any removal took place.
   /// `false` is returned if there were no properties to remove. The time
@@ -69,29 +69,29 @@ public:
   /// `false` is returned if there were no properties to remove. The time
   /// complexity of this function is O(1).
   /// @throw std::bad_alloc
-  bool ClearProperties(TemporalPeriod& vt);
+  bool ClearProperties(utils::TimeSpan& vt);
 
   using EdgeStoreType = std::tuple<EdgeTypeId, Vertex *, EdgeRef>;
 
-  /// Returns an interval which contains "true" for every vt in between the TemporalPeriod 'vt' so that
+  /// Returns an interval which contains "true" for every vt in between the utils::TimeSpan 'vt' so that
   /// an outgoing edge 'edge' exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::timeline<bool> GetOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
+  utils::timeline GetOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt) const;
 
-  /// Returns an interval which contains "true" for every vt in between the TemporalPeriod 'vt' so that
+  /// Returns an interval which contains "true" for every vt in between the utils::TimeSpan 'vt' so that
   /// an ingoing edge 'edge' exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::timeline<bool> GetIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
+  utils::timeline GetIngoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt) const;
 
-  /// Checks whether there is an outgoing edge `edge` in the store in between the TemporalPeriod "vt". The time
+  /// Checks whether there is an outgoing edge `edge` in the store in between the utils::TimeSpan "vt". The time
   /// complexity of this function is O(n).
-  bool HasOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
+  bool HasOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt) const;
 
-  /// Checks whether there is an ingoing edge `edge` in the store in between the TemporalPeriod "vt". The time
+  /// Checks whether there is an ingoing edge `edge` in the store in between the utils::TimeSpan "vt". The time
   /// complexity of this function is O(n).
-  bool HasIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
+  bool HasIngoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt) const;
 
   /// Checks whether there is an outgoing edge `edge` in the store at all. The time
   /// complexity of this function is O(n).
@@ -111,47 +111,47 @@ public:
   /// @throw std::bad_alloc
   std::vector<EdgeStoreType> OutgoingEdges() const;
 
-  /// Link an outgoing edge "edge" in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Link an outgoing edge "edge" in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool SetOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt);
+  bool SetOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt);
 
-  /// Unlink an outgoing edge "edge" in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Unlink an outgoing edge "edge" in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool DeleteOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt);
+  bool DeleteOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt);
 
-  /// Link an ingoing edge "edge" in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Link an ingoing edge "edge" in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool SetIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt);
+  bool SetIngoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt);
 
-  /// Unlink an outgoing edge "edge" in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Unlink an outgoing edge "edge" in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool DeleteIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt);
+  bool DeleteIngoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt);
 
-  /// Returns an interval which contains "true" for every vt in between the TemporalPeriod 'vt' so that
+  /// Returns an interval which contains "true" for every vt in between the utils::TimeSpan 'vt' so that
   /// this graph object exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::timeline<bool> GetObjectValidity(const TemporalPeriod& vt) const;
+  utils::timeline GetObjectValidity(const utils::TimeSpan& vt) const;
 
-  /// Mark the object as valid and existing in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Mark the object as valid and existing in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool CreateObject(const TemporalPeriod& vt);
+  bool CreateObject(const utils::TimeSpan& vt);
 
-  /// Mark the object as deleted in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Mark the object as deleted in a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool DeleteObject(const TemporalPeriod& vt);
+  bool DeleteObject(const utils::TimeSpan& vt);
 
   /// Mark the object as deleted from the start to the end of times. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
@@ -159,15 +159,15 @@ public:
   /// @throw std::bad_alloc
   bool DeleteObject();
 
-  //// Returns an interval which contains "true" for every vt in between the TemporalPeriod 'vt' so that
+  //// Returns an interval which contains "true" for every vt in between the utils::TimeSpan 'vt' so that
   /// the label "label" exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::timeline<bool> GetLabel(LabelId label, const TemporalPeriod& vt) const;
+  utils::timeline GetLabel(LabelId label, const utils::TimeSpan& vt) const;
 
-  /// Checks whether the label "label" exists in the store in between the TemporalPeriod "vt". The time
+  /// Checks whether the label "label" exists in the store in between the utils::TimeSpan "vt". The time
   /// complexity of this function is O(n).
-  bool HasLabel(LabelId label, const TemporalPeriod& vt) const;
+  bool HasLabel(LabelId label, const utils::TimeSpan& vt) const;
 
   /// Checks whether the label `label` exists in the store at all. The time
   /// complexity of this function is O(n).
@@ -178,14 +178,14 @@ public:
   /// @throw std::bad_alloc
   std::vector<LabelId> Labels() const;
 
-  /// Set a label a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// Set a label a utils::TimeSpan "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
   /// O(n).
   /// @throw std::bad_alloc
-  bool SetLabel(LabelId label, const TemporalPeriod& vt);
+  bool SetLabel(LabelId label, const utils::TimeSpan& vt);
 
   /// Remove the label and return `true` if any removal took place.
-  /// `false` is returned if there were no timespan to remove. The time
+  /// `false` is returned if there were no utils::TimeSpan to remove. The time
   /// complexity of this function is O(1).
   /// @throw std::bad_alloc
   bool DeleteLabel(LabelId label);
@@ -194,10 +194,10 @@ public:
   /// `false` is returned if there were no properties to remove. The time
   /// complexity of this function is O(1).
   /// @throw std::bad_alloc
-  bool DeleteLabel(LabelId label, const TemporalPeriod& vt);
+  bool DeleteLabel(LabelId label, const utils::TimeSpan& vt);
 
-  using TimelineList = std::vector<TemporalPeriod>;
-  using ValuedTimeline = std::vector<std::pair<TemporalPeriod, PropertyValue>>;
+  using TimelineList = std::vector<utils::TimeSpan>;
+  using ValuedTimeline = std::vector<std::pair<utils::TimeSpan, PropertyValue>>;
 
 private:
     TimelineList lifetime_;

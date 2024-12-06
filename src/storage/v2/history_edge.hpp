@@ -49,7 +49,7 @@ struct HistoryEdge {
     tt_te=(uint64_t)std::numeric_limits<int64_t>::max();
   }
 
-  HistoryEdge(const Gid gid, uint64_t transaction_st, const Gid from_gid, const Gid to_gid,const TemporalPeriod& vt) : gid(gid),tt_ts(transaction_st),from_gid(from_gid),to_gid(to_gid), vt(vt){
+  HistoryEdge(const Gid gid, uint64_t transaction_st, const Gid from_gid, const Gid to_gid,const utils::TimeSpan& vt) : gid(gid),tt_ts(transaction_st),from_gid(from_gid),to_gid(to_gid), vt(vt){
     // tt_ts=0;
     tt_te=(uint64_t)std::numeric_limits<int64_t>::max();
   }
@@ -69,7 +69,7 @@ struct HistoryEdge {
   storage::EdgeTypeId type;
   std::map<PropertyId, PropertyValue> properties;
 
-  TemporalPeriod vt;
+  utils::TimeSpan vt;
 
   Delta *delta;
   // std::map<std::string, nlohmann::json> properties;

@@ -2,7 +2,7 @@
 // Created by marcob0020 on 11/30/24.
 //
 #pragma once
-#include <storage/v2/temporal_period.hpp>
+#include <utils/timespan.hpp>
 
 #include "vt_temporal.hpp"
 #include "interval.hpp"
@@ -49,7 +49,7 @@ namespace utils {
   }
 
   template<typename T>
-  bool TimelineInsertion(const storage::TemporalPeriod& vt, bool inverse, const T& list) {
+  bool TimelineInsertion(const utils::TimeSpan& vt, bool inverse, const T& list) {
     //TODO ensure write is valued
     bool write = false;
 
@@ -84,8 +84,8 @@ namespace utils {
       if (vt.overlaps(*itx) ) {
         if (!inverse) {
           if (!vt_written) {
-            itx->first = utils::VTDateTime::less(vt.first,itx->first);
-            itx->second = utils::VTDateTime::greater(vt.second,itx->second);
+            itx->first = VTDateTime::less(vt.first,itx->first);
+            itx->second = VTDateTime::greater(vt.second,itx->second);
             vt_written = true;
             end = itx->second;
             edit_vt = itx;
@@ -104,12 +104,12 @@ namespace utils {
         }else {
           if (itx->first < vt.first) {
             if (itx->second > vt.second) {
-              v_new.emplace_back(utils::VTDateTime::next(vt.second), itx->second);
+              v_new.emplace_back(VTDateTime::next(vt.second), itx->second);
               break;
             }
 
             if (itx->second <= vt.second) {
-              itx->second = utils::VTDateTime::prev(vt.first);
+              itx->second = VTDateTime::prev(vt.first);
             }
 
           } else if (itx->first >= vt.first) {
@@ -120,7 +120,7 @@ namespace utils {
               }
               delete_end = itx;
             }else {
-              itx->second = utils::VTDateTime::next(vt.second);
+              itx->second = VTDateTime::next(vt.second);
               break;
             }
           }
@@ -130,7 +130,7 @@ namespace utils {
 
       if (vt.second < itx.first) {
         if (vt_written) {
-          if (itx.first == utils::VTDateTime::next(vt.second) && !inverse) {
+          if (itx.first == VTDateTime::next(vt.second) && !inverse) {
             edit_vt->second = itx->second;
 
             if (!deleting) {
@@ -170,8 +170,8 @@ namespace utils {
   }
 
   template<typename T>
-  timeline<bool> TimelineRetrieval(const storage::TemporalPeriod &vt, const T& list) {
-    utils::timeline<bool> result(vt);
+  timeline TimelineRetrieval(const TimeSpan &vt, const T& list) {
+    timeline result(vt);
 
     for (const auto &vtlist : list) {
       if (vt.included(vtlist)) {
@@ -191,7 +191,7 @@ namespace utils {
   }
 
   template<typename T>
-  bool TimelineExistence(const storage::TemporalPeriod &vt, const T& list) {
+  bool TimelineExistence(const TimeSpan &vt, const T& list) {
     for (const auto &vtlist : list) {
       if (vt.overlaps(vtlist)) {
         return true;
@@ -202,7 +202,7 @@ namespace utils {
   }
 
   template<typename T>
-  bool TimelineCoverage(const storage::TemporalPeriod &vt, const T& list) {
+  bool TimelineCoverage(const TimeSpan &vt, const T& list) {
     for (const auto &vtlist : list) {
       if (vt.included(vtlist)) {
         return true;
@@ -215,7 +215,7 @@ namespace utils {
   }
 
   template<typename T, typename V>
-  bool ValuedTimelineInsertion(const storage::TemporalPeriod& vt, bool inverse, const T& list, const V& value) {
+  bool ValuedTimelineInsertion(const TimeSpan& vt, bool inverse, const T& list, const V& value) {
     bool write = false;
 
     auto& timeline = list;
@@ -229,7 +229,7 @@ namespace utils {
     auto edit_start = timeline.end() , edit_end = timeline.end(), prev = timeline.begin(), delete_start = timeline.end(), delete_end = timeline.end();
 
     bool vt_written = false, deleting = false;
-    std::vector<std::pair<storage::TemporalPeriod,V>> v_new;
+    std::vector<std::pair<TimeSpan,V>> v_new;
     v_new.reserve(2);
 
     for (auto itx = timeline.begin(); itx != timeline.end(); itx++) {
@@ -246,7 +246,7 @@ namespace utils {
           V val = itx->second;
 
           if (itx->first.first < vt.first) {
-            itx->first.second = utils::VTDateTime::prev(vt.first);
+            itx->first.second = VTDateTime::prev(vt.first);
             edit_start = itx;
 
             v_new.emplace_back(vt, value);
@@ -255,11 +255,11 @@ namespace utils {
           }
 
           if (itx->first.second > vt.second) {
-            v_new.emplace_back(TemporalPeriod(utils::VTDateTime::next(vt.second),itx->first.second), val);
+            v_new.emplace_back(TimeSpan(VTDateTime::next(vt.second),itx->first.second), val);
           }
 
           if (!v_new.empty())
-            utils::CombineIntoVector(timeline, v_new, itx);
+            CombineIntoVector(timeline, v_new, itx);
 
           return true;
 
@@ -275,7 +275,7 @@ namespace utils {
               delete_end = itx;
             }
           }else {
-            itx->first.first = utils::VTDateTime::next(vt.second);
+            itx->first.first = VTDateTime::next(vt.second);
             break;
           }
         }
@@ -285,7 +285,7 @@ namespace utils {
             vt_written = true;
             itx->first.second = vt.second;
           }else {
-            itx->first.second = utils::VTDateTime::prev(vt.first);
+            itx->first.second = VTDateTime::prev(vt.first);
 
             v_new.emplace_back(vt, value);
             vt_written = true;
@@ -295,7 +295,7 @@ namespace utils {
             vt_written = true;
             itx->first.first = vt.first;
           }else {
-            itx->first.first = utils::VTDateTime::next(vt.second);
+            itx->first.first = VTDateTime::next(vt.second);
 
             v_new.emplace_back(vt, value);
             vt_written = true;
@@ -321,13 +321,13 @@ namespace utils {
       v_new.emplace_back(vt, value);
     }
 
-    utils::ReplaceIntoVector(timeline, v_new, delete_start, delete_start == timeline.end() ? edit_start: delete_end );
+    ReplaceIntoVector(timeline, v_new, delete_start, delete_start == timeline.end() ? edit_start: delete_end );
 
     return write;
   }
 
   template<typename T, typename V>
-  bool ValuedTimelineEquals(const storage::TemporalPeriod &vt, const T& list, const V& value) {
+  bool ValuedTimelineEquals(const TimeSpan &vt, const T& list, const V& value) {
     auto& timeline = list;
     for (const auto &kv : timeline) {
       if (vt.included(kv.first)) {
@@ -346,8 +346,8 @@ namespace utils {
   }
 
   template<typename T, typename V>
-  valued_timeline<V> ValuedTimelineRetrieval(const storage::TemporalPeriod &vt, const T& list) {
-    utils::valued_timeline<V> result(vt);
+  valued_timeline<V> ValuedTimelineRetrieval(const TimeSpan &vt, const T& list) {
+    valued_timeline<V> result(vt);
 
     for (const auto &kv : list) {
       if (vt.overlaps(kv.first)) {
@@ -362,7 +362,7 @@ namespace utils {
   }
 
   template<typename T>
-  bool ValuedTimelineExistence(const storage::TemporalPeriod &vt, const T& list) {
+  bool ValuedTimelineExistence(const TimeSpan &vt, const T& list) {
     for (const auto &kv : list) {
       if (vt.overlaps(kv.first)) {
         return true;

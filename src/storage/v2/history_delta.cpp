@@ -6,6 +6,7 @@
 #include "utils/settings.hpp"
 #include <json/json.hpp>
 #include "query/serialization/property_value.hpp"
+#include "utils/temporal_filter.hpp"
 namespace history_delta {
 
 namespace {
@@ -69,13 +70,13 @@ nlohmann::json SerializePropertyValueMap(const std::map<std::string, storage::Pr
 
 
 //help functions
- bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,const query::TemporalQueryType& type){
+ bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,const utils::TemporalQueryType& type){
   switch (type) {
-    case query::TemporalQueryType::AS_OF:
+    case utils::TemporalQueryType::AS_OF:
       return object_ts<=c_ts & object_te>c_te;
-    case query::TemporalQueryType::FROM_TO:
+    case utils::TemporalQueryType::FROM_TO:
       return object_ts<c_te & object_te>c_ts;
-    case query::TemporalQueryType::BETWEEN_AND:
+    case utils::TemporalQueryType::BETWEEN_AND:
       return object_ts<=c_te & object_te>c_ts;
     default:
       return false;
@@ -137,7 +138,7 @@ std::string uint_convert_to_string(const int64_t time){
     return start_str;
 }
 
-std::string formatPrefix(const std::string& segmentPrefix, const storage::Gid& gid, const uint64_t tt_start, const uint64_t tt_end, const storage::TemporalPeriod vt)
+std::string formatPrefix(const std::string& segmentPrefix, const storage::Gid& gid, const uint64_t tt_start, const uint64_t tt_end, const utils::TimeSpan vt)
 {
    std::string result=segmentPrefix;
    constexpr std::string_view delimiter(":");
@@ -189,7 +190,7 @@ std::string formatPartialPrefix(const std::string& segmentPrefix, const storage:
    return prefix;
 }
 
-std::string formatVT(const storage::TemporalPeriod& vt) {
+std::string formatVT(const utils::TimeSpan& vt) {
    std::string result;
    constexpr std::string_view delimiter(":");
 
@@ -205,7 +206,7 @@ std::string formatVT(const storage::TemporalPeriod& vt) {
    return result;
 }
 
-storage::TemporalPeriod parseFormattedVT(const std::string& formatted_vt) {
+utils::TimeSpan parseFormattedVT(const std::string& formatted_vt) {
    utils::VTDateTime vt_start = utils::VTDateTime::min();
    utils::VTDateTime vt_end = utils::VTDateTime::max();
 
@@ -220,7 +221,7 @@ storage::TemporalPeriod parseFormattedVT(const std::string& formatted_vt) {
    return {vt_start, vt_end};
 }
 
-std::tuple<uint64_t,int64_t,int64_t, storage::TemporalPeriod> string_convert_to_uint(std::string res){
+std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(std::string res){
     constexpr size_t size64=sizeof(int64_t);
     const size_t length=res.length();
 
@@ -253,7 +254,7 @@ std::tuple<uint64_t,int64_t,int64_t, storage::TemporalPeriod> string_convert_to_
      vt_start = utils::VTDateTime(vt_ts);
      vt_end = utils::VTDateTime(vt_te);
    }
-   storage::TemporalPeriod vt(vt_start, vt_end);
+   utils::TimeSpan vt(vt_start, vt_end);
 
    return std::make_tuple(gid_uint, tt_ts, tt_te, vt);
 
@@ -317,7 +318,7 @@ void combineVertex(nlohmann::json before_data,nlohmann::json &current_data){
   }
 }
 
-// void combineVertexVT(nlohmann::json before_data, nlohmann::json &current_data, const storage::TemporalPeriod delta_vt, const storage::TemporalPeriod filter_vt, bool before_vt, utils::interval<std::string> prefixs) {
+// void combineVertexVT(nlohmann::json before_data, nlohmann::json &current_data, const utils::TimeSpan delta_vt, const utils::TimeSpan filter_vt, bool before_vt, utils::interval<std::string> prefixs) {
 //    std::string this_prefix = formatVT(delta_vt);
 //    prefixs.add(delta_vt.get_pair(), this_prefix);
 //
@@ -362,7 +363,7 @@ HistoryDelta::HistoryDelta(const std::string &storage_directory,bool realTimeFla
 
 
 
-std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid) {
+std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type,uint64_t gid) {
   std::vector<nlohmann::json> history_Delta;
   bool anchor_flag=false;
   auto tmp_info=nlohmann::json::object();
@@ -420,13 +421,13 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(uint64_t c
     if(TemporalCheck(object_ts,object_te,c_ts,c_te,type)){
       need_combine=false;
       history_Delta.emplace_back(current_info);
-      if(type==query::TemporalQueryType::AS_OF) break;
+      if(type==utils::TemporalQueryType::AS_OF) break;
     }
   } 
   return std::make_pair(history_Delta,anchor_flag);
 }
 
-std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(storage::Gid gid, uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type, const query::TemporalFilter& vt_filter) {
+std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(storage::Gid gid, uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type, const utils::TemporalFilter& vt_filter) {
   std::vector<nlohmann::json> history_Delta;
   bool anchor_flag=false;
   auto tmp_info=nlohmann::json::object();
@@ -490,7 +491,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(storage::G
     if(TemporalCheck(object_ts,object_te,c_ts,c_te,type)){
       need_combine=false;
       history_Delta.emplace_back(current_info);
-      if(type==query::TemporalQueryType::AS_OF) break;
+      if(type==utils::TemporalQueryType::AS_OF) break;
     }
   }
   return std::make_pair(history_Delta,anchor_flag);
@@ -516,7 +517,7 @@ void HistoryDelta::GetTimeTableAll(){
   }
 }
 
-std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type){
+std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type){
     std::vector<nlohmann::json> history_Delta;
     bool anchor_flag=false;
     uint64_t vertx_gid=gid.AsUint();//vertex Gid
@@ -572,13 +573,13 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
         if(TemporalCheck(object_ts,object_te,c_ts,c_te,type)){
             need_combine=false;
             history_Delta.emplace_back(current_info);
-            if(type==query::TemporalQueryType::AS_OF) break;
+            if(type==utils::TemporalQueryType::AS_OF) break;
         }
     }
     return std::make_pair(history_Delta,anchor_flag);
 }
 
-std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type, const query::TemporalFilter& vt_filter){
+std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type, const utils::TemporalFilter& vt_filter){
   std::vector<nlohmann::json> history_Delta;
   bool anchor_flag=false, multiple_vts = false, tmp_vt = false;
 
@@ -631,7 +632,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
     if(!vt_filter.matches(vt.first, vt.second))
       break;
 
-    multiple_vts |= !vt_filter.get_period().included(vt);
+    multiple_vts |= !vt_filter.get_span().included(vt);
 
     auto current_info=nlohmann::json::parse(vd_iter_begin->second);//data of current node
 
@@ -641,7 +642,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
     }
 
     // if (need_combine && multiple_vts) {
-    //   combineVertexVT(tmp_info,current_info,vt,vt_filter.get_period(), tmp_vt);
+    //   combineVertexVT(tmp_info,current_info,vt,vt_filter.get_span(), tmp_vt);
     //   tmp_info=current_info;
     //   tmp_vt = true;
     // }
@@ -649,13 +650,13 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
     if(TemporalCheck(object_ts,object_te,c_ts,c_te,type)){
         need_combine=false;
         history_Delta.emplace_back(current_info);
-        if(type==query::TemporalQueryType::AS_OF) break;
+        if(type==utils::TemporalQueryType::AS_OF) break;
     }
   }
   return std::make_pair(history_Delta,anchor_flag);
 }
 
-std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_, const uint64_t c_ts, const uint64_t c_te,query::TemporalQueryType types_){
+std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_, const uint64_t c_ts, const uint64_t c_te,utils::TemporalQueryType types_){
   std::vector<std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t>> res;
   storage::Delta* vertex_deltas=current_vertex_.getDeltas();
   auto need_deleted_flag=true;
@@ -699,7 +700,7 @@ std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::Propert
 
     if(TemporalCheck(transaction_ts,transaction_te,c_ts,c_te,types_)){//&TemporalCheck(tmp_ts,tmp_te,c_ts,c_te,types)
       res.emplace_back(maybe_properties,transaction_ts,transaction_te);
-      if(types_==query::TemporalQueryType::AS_OF) {//If it is a time point, it will be returned directly and there is no need to traverse the records of delted history.
+      if(types_==utils::TemporalQueryType::AS_OF) {//If it is a time point, it will be returned directly and there is no need to traverse the records of delted history.
         need_deleted_flag=false;
         break;
       }
@@ -710,8 +711,8 @@ std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::Propert
   return std::make_pair(res,need_deleted_flag);
 }
 
-std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, storage::TemporalPeriod> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_, const uint64_t c_ts, const uint64_t c_te,query::TemporalQueryType types_, const query::TemporalFilter vt_filter){
-  std::vector<std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, storage::TemporalPeriod>> res;
+std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, utils::TimeSpan> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_, const uint64_t c_ts, const uint64_t c_te,utils::TemporalQueryType types_, const utils::TemporalFilter vt_filter){
+  std::vector<std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, utils::TimeSpan>> res;
   storage::Delta* vertex_deltas=current_vertex_.getDeltas();
   auto need_deleted_flag=true;
 
@@ -724,7 +725,7 @@ std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::Propert
 
 
   while (vertex_deltas != nullptr) {
-    storage::TemporalPeriod delta_vt = vertex_deltas->vt;
+    utils::TimeSpan delta_vt = vertex_deltas->vt;
 
     if (!vt_filter.matches(vertex_deltas->vt.first, vertex_deltas->vt.second)) {
       vertex_deltas = vertex_deltas->next.load(std::memory_order_acquire);
@@ -762,7 +763,7 @@ std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::Propert
 
     if(TemporalCheck(transaction_ts,transaction_te,c_ts,c_te,types_)){//&TemporalCheck(tmp_ts,tmp_te,c_ts,c_te,types)
       res.emplace_back(maybe_properties,transaction_ts,transaction_te, delta_vt);
-      if(types_==query::TemporalQueryType::AS_OF) {//If it is a time point, it will be returned directly and there is no need to traverse the records of delted history.
+      if(types_==utils::TemporalQueryType::AS_OF) {//If it is a time point, it will be returned directly and there is no need to traverse the records of delted history.
         need_deleted_flag=false;
         break;
       }
@@ -773,7 +774,7 @@ std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::Propert
   return std::make_pair(res,need_deleted_flag);
 }
 
-std::vector<nlohmann::json> HistoryDelta::GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t vertex_gid){
+std::vector<nlohmann::json> HistoryDelta::GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type,uint64_t vertex_gid){
     std::vector<nlohmann::json> history_Delta;
 
     //1. Find data in VE segment
@@ -802,14 +803,14 @@ std::vector<nlohmann::json> HistoryDelta::GetDeleteEdgeInfo(uint64_t c_ts,uint64
         if(TemporalCheck(object_ts,object_te,c_ts,c_te,type)){
             need_combine=false;
             history_Delta.emplace_back(current_info);
-            if(type==query::TemporalQueryType::AS_OF) break;
+            if(type==utils::TemporalQueryType::AS_OF) break;
         }
     }
 
     return history_Delta;
 }
 
-std::vector<nlohmann::json> HistoryDelta::GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t vertex_gid, const query::TemporalFilter& vt_filter){
+std::vector<nlohmann::json> HistoryDelta::GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type,uint64_t vertex_gid, const utils::TemporalFilter& vt_filter){
   std::vector<nlohmann::json> history_Delta;
 
   //1. Find data in VE segment
@@ -840,7 +841,7 @@ std::vector<nlohmann::json> HistoryDelta::GetDeleteEdgeInfo(uint64_t c_ts,uint64
     if(TemporalCheck(object_ts,object_te,c_ts,c_te,type)){
       need_combine=false;
       history_Delta.emplace_back(current_info);
-      if(type==query::TemporalQueryType::AS_OF) break;
+      if(type==utils::TemporalQueryType::AS_OF) break;
     }
   }
 
@@ -880,7 +881,7 @@ void HistoryDelta::SaveDelta(storage::Delta& delta,storage::NameIdMapper &name_i
   uint64_t commit = delta.commit_timestamp;
   storage::Gid gid = delta.gid;
   std::optional<storage::Gid> to_gid = delta.to_gid;
-  storage::TemporalPeriod vt = delta.vt;
+  utils::TimeSpan vt = delta.vt;
 
 
   if(start>commit)

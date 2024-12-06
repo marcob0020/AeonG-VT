@@ -4,13 +4,13 @@
 
 #include "vt_store.hpp"
 
-#include <query/temporal_filter.hpp>
+#include <utils/temporal_filter.hpp>
 #include <utils/temporal_functions.hpp>
 
 namespace storage {
 
   VtStore::VtStore() {
-    DeleteObject(TemporalPeriod());
+    DeleteObject(utils::TimeSpan());
   }
 
   VtStore::VtStore(VtStore &&other) noexcept {
@@ -28,7 +28,7 @@ namespace storage {
     return *this;
   }
 
-  utils::valued_timeline<PropertyValue> VtStore::GetProperty(PropertyId property, const TemporalPeriod &vt) const {
+  utils::valued_timeline<PropertyValue> VtStore::GetProperty(PropertyId property, const utils::TimeSpan &vt) const {
     utils::valued_timeline<PropertyValue> result(vt);
 
     auto it = properties_.find(property);
@@ -39,7 +39,7 @@ namespace storage {
     return utils::ValuedTimelineRetrieval<ValuedTimeline,PropertyValue>(vt, it->second);
   }
 
-  bool VtStore::HasProperty(PropertyId property, const TemporalPeriod& vt) const {
+  bool VtStore::HasProperty(PropertyId property, const utils::TimeSpan& vt) const {
     auto it = properties_.find(property);
 
     if (it == properties_.end())
@@ -54,7 +54,7 @@ namespace storage {
     return it != properties_.end() && !it->second.empty();
   }
 
-  bool VtStore::IsPropertyEqual(PropertyId property, const PropertyValue &value, const TemporalPeriod &vt) const {
+  bool VtStore::IsPropertyEqual(PropertyId property, const PropertyValue &value, const utils::TimeSpan &vt) const {
     auto it = properties_.find(property);
 
     if (it == properties_.end())
@@ -76,11 +76,11 @@ namespace storage {
     return result;
   }
 
-  bool VtStore::SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod &vt) {
+  bool VtStore::SetProperty(PropertyId property, const PropertyValue &value, const utils::TimeSpan &vt) {
     auto it = properties_.find(property);
 
     if (it == properties_.end()) {
-      std::vector<std::pair<TemporalPeriod,PropertyValue>> v;
+      std::vector<std::pair<utils::TimeSpan,PropertyValue>> v;
       v.emplace_back(vt, value);
       properties_.emplace(property, std::move(v));
 
@@ -98,7 +98,7 @@ namespace storage {
     return !empty;
   }
 
-  bool VtStore::ClearProperties(TemporalPeriod &vt) {
+  bool VtStore::ClearProperties(utils::TimeSpan &vt) {
 
     bool edit = false;
     for (auto it = properties_.begin(); it != properties_.end(); it++) {
@@ -112,7 +112,7 @@ namespace storage {
     return edit;
   }
 
-  utils::timeline<bool> VtStore::GetOutgoingEdge(EdgeStoreType edge, const TemporalPeriod &vt) const {
+  utils::timeline VtStore::GetOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan &vt) const {
     const auto it = outgoing_edges_.find(edge);
 
     if (it == outgoing_edges_.end())
@@ -122,7 +122,7 @@ namespace storage {
     return utils::TimelineRetrieval(vt, it->second);
   }
 
-  utils::timeline<bool> VtStore::GetIngoingEdge(EdgeStoreType edge, const TemporalPeriod &vt) const {
+  utils::timeline VtStore::GetIngoingEdge(EdgeStoreType edge, const utils::TimeSpan &vt) const {
     const auto it = ingoing_edges_.find(edge);
 
     if (it == outgoing_edges_.end())
@@ -131,7 +131,7 @@ namespace storage {
     return utils::TimelineRetrieval(vt, it->second);
   }
 
-  bool VtStore::HasOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const {
+  bool VtStore::HasOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt) const {
     const auto it = outgoing_edges_.find(edge);
 
     if (it == outgoing_edges_.end())
@@ -140,7 +140,7 @@ namespace storage {
     return utils::TimelineExistence(vt, it->second);
   }
 
-  bool VtStore::HasIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const {
+  bool VtStore::HasIngoingEdge(EdgeStoreType edge, const utils::TimeSpan& vt) const {
     const auto it = ingoing_edges_.find(edge);
 
     if (it == ingoing_edges_.end())
@@ -181,11 +181,11 @@ namespace storage {
     return result;
   }
 
-  bool VtStore::SetOutgoingEdge(EdgeStoreType edge, const TemporalPeriod &vt) {
+  bool VtStore::SetOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan &vt) {
     const auto it = outgoing_edges_.find(edge);
 
     if (it==outgoing_edges_.end()) {
-      std::vector<TemporalPeriod> new_edges;
+      std::vector<utils::TimeSpan> new_edges;
       new_edges.emplace_back(vt);
       outgoing_edges_[edge] = new_edges;
 
@@ -195,7 +195,7 @@ namespace storage {
     return utils::TimelineInsertion(vt, false, it->second);
   }
 
-  bool VtStore::DeleteOutgoingEdge(EdgeStoreType edge, const TemporalPeriod &vt) {
+  bool VtStore::DeleteOutgoingEdge(EdgeStoreType edge, const utils::TimeSpan &vt) {
     const auto it = outgoing_edges_.find(edge);
 
     if (it==outgoing_edges_.end())
@@ -206,11 +206,11 @@ namespace storage {
   }
 
 
-  bool VtStore::SetIngoingEdge(EdgeStoreType edge, const TemporalPeriod &vt) {
+  bool VtStore::SetIngoingEdge(EdgeStoreType edge, const utils::TimeSpan &vt) {
     const auto it = ingoing_edges_.find(edge);
 
     if (it==ingoing_edges_.end()) {
-      std::vector<TemporalPeriod> new_edges;
+      std::vector<utils::TimeSpan> new_edges;
       new_edges.emplace_back(vt);
       ingoing_edges_[edge] = new_edges;
 
@@ -220,7 +220,7 @@ namespace storage {
     return utils::TimelineInsertion(vt, false, it->second);
   }
 
-  bool VtStore::DeleteIngoingEdge(EdgeStoreType edge, const TemporalPeriod &vt) {
+  bool VtStore::DeleteIngoingEdge(EdgeStoreType edge, const utils::TimeSpan &vt) {
     const auto it = ingoing_edges_.find(edge);
 
     if (it==ingoing_edges_.end())
@@ -230,23 +230,23 @@ namespace storage {
   }
 
 
- utils::timeline<bool> VtStore::GetObjectValidity(const TemporalPeriod &vt) const {
+ utils::timeline VtStore::GetObjectValidity(const utils::TimeSpan &vt) const {
     return utils::TimelineRetrieval(vt, lifetime_);
  }
 
- bool VtStore::CreateObject(const TemporalPeriod &vt) {
+ bool VtStore::CreateObject(const utils::TimeSpan &vt) {
    return utils::TimelineInsertion(vt, false, lifetime_);
  }
 
-  bool VtStore::DeleteObject(const TemporalPeriod &vt) {
+  bool VtStore::DeleteObject(const utils::TimeSpan &vt) {
     return utils::TimelineInsertion(vt, true, lifetime_);
   }
 
   bool VtStore::DeleteObject() {
-    return utils::TimelineInsertion(TemporalPeriod() , true, lifetime_);
+    return utils::TimelineInsertion(utils::TimeSpan() , true, lifetime_);
   }
 
-  utils::timeline<bool> VtStore::GetLabel(LabelId label, const TemporalPeriod &vt) const {
+  utils::timeline VtStore::GetLabel(LabelId label, const utils::TimeSpan &vt) const {
     const auto it = labels_.find(label);
 
     if (it == labels_.end())
@@ -255,7 +255,7 @@ namespace storage {
     return utils::TimelineRetrieval(vt, it->second);
   }
 
-  bool VtStore::HasLabel(LabelId label, const TemporalPeriod &vt) const {
+  bool VtStore::HasLabel(LabelId label, const utils::TimeSpan &vt) const {
     const auto it = labels_.find(label);
 
     if (it == labels_.end())
@@ -280,11 +280,11 @@ namespace storage {
     return result;
   }
 
-  bool VtStore::SetLabel(LabelId label, const TemporalPeriod &vt) {
+  bool VtStore::SetLabel(LabelId label, const utils::TimeSpan &vt) {
     const auto it = labels_.find(label);
 
     if (it==labels_.end()) {
-      std::vector<TemporalPeriod> new_Labels;
+      std::vector<utils::TimeSpan> new_Labels;
       new_Labels.emplace_back(vt);
       labels_[label] = new_Labels;
 
@@ -294,7 +294,7 @@ namespace storage {
     return utils::TimelineInsertion(vt, false, it->second);
   }
 
-  bool VtStore::DeleteLabel(LabelId label, const TemporalPeriod &vt) {
+  bool VtStore::DeleteLabel(LabelId label, const utils::TimeSpan &vt) {
     const auto it = labels_.find(label);
 
     if (it==labels_.end())
@@ -304,7 +304,7 @@ namespace storage {
   }
 
   bool VtStore::DeleteLabel(LabelId label) {
-    return DeleteLabel(label, TemporalPeriod());
+    return DeleteLabel(label, utils::TimeSpan());
   }
 
 

@@ -221,19 +221,19 @@ class Storage final {
     VertexAccessor CreateVertex();
 
     /// @throw std::bad_alloc
-    VertexAccessor CreateVertex(const TemporalPeriod& vt);
+    VertexAccessor CreateVertex(const utils::TimeSpan& vt);
 
     std::optional<history_delta::HistoryDelta>& GetHistoryDelta(){
       return storage_->saved_history_deltas_;
     }
     storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::HistoryContext& historyContext_);
-    storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, TemporalPeriod> & maybe_props,history_delta::HistoryContext& historyContext_);
+    storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, utils::TimeSpan> & maybe_props,history_delta::HistoryContext& historyContext_);
     storage::HistoryVertex CreateHistoryVertexFromKV(const storage::HistoryVertex ,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_);
     storage::HistoryVertex CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(const EdgeAccessor &another,nlohmann::json gid_delta_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(storage::HistoryEdge edge_,nlohmann::json gid_delta_);
     Result<std::vector<EdgeAccessor>> Edges(std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> &edges_,const std::vector<EdgeTypeId> &edge_types,storage::Gid gid,bool from,std::optional<storage::Gid> existing_gid);
-    utils::timeline<bool> EdgeVt(Vertex* from_vertex, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const query::TemporalFilter& vt);
+    utils::timeline EdgeVt(Vertex* from_vertex, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TemporalFilter& vt);
 
 
     Gid IdToGid(const uint64_t key);
@@ -355,7 +355,7 @@ class Storage final {
 
     /// @return Accessor to the temporal-deleted vertex if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
-    Result<std::optional<VertexAccessor>> DeleteVertex(VertexAccessor *vertex,const TemporalPeriod& vt);
+    Result<std::optional<VertexAccessor>> DeleteVertex(VertexAccessor *vertex,const utils::TimeSpan& vt);
 
     /// @return Accessor to the deleted vertex and deleted edges if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
@@ -365,13 +365,13 @@ class Storage final {
     /// @return Accessor to the temporal-deleted vertex and deleted edges if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
     Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> DetachDeleteVertex(
-        VertexAccessor *vertex, const TemporalPeriod& vt);
+        VertexAccessor *vertex, const utils::TimeSpan& vt);
 
     /// @throw std::bad_alloc
     Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type);
 
     /// @throw std::bad_alloc
-    Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, const TemporalPeriod& vt);
+    Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, const utils::TimeSpan& vt);
 
     /// Accessor to the deleted edge if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
@@ -379,7 +379,7 @@ class Storage final {
 
     /// Accessor to the deleted edge if a deletion took place, std::nullopt otherwise
     /// @throw std::bad_alloc
-    Result<std::optional<EdgeAccessor>> DeleteEdge(EdgeAccessor *edge, const TemporalPeriod& vt);
+    Result<std::optional<EdgeAccessor>> DeleteEdge(EdgeAccessor *edge, const utils::TimeSpan& vt);
 
     const std::string &LabelToName(LabelId label) const;
     const std::string &PropertyToName(PropertyId property) const;
@@ -432,13 +432,13 @@ class Storage final {
     VertexAccessor CreateVertex(storage::Gid gid);
 
     /// @throw std::bad_alloc
-    VertexAccessor CreateVertex(storage::Gid gid, const TemporalPeriod& vt);
+    VertexAccessor CreateVertex(storage::Gid gid, const utils::TimeSpan& vt);
 
     /// @throw std::bad_alloc
     Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, storage::Gid gid);
 
     /// @throw std::bad_alloc
-    Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, storage::Gid gid, const TemporalPeriod& vt);
+    Result<EdgeAccessor> CreateEdge(VertexAccessor *from, VertexAccessor *to, EdgeTypeId edge_type, storage::Gid gid, const utils::TimeSpan& vt);
 
     bool ProbeDeltasForDeletion(Vertex* vertex, Delta::Action action, const add_info_t& infos);
     bool ProbeDeltasForDeletion(Edge* vertex, Delta::Action action, const add_info_t& infos);
