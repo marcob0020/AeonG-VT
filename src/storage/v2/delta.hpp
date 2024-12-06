@@ -17,7 +17,7 @@
 #include "storage/v2/id_types.hpp"
 #include "storage/v2/property_value.hpp"
 #include "utils/logging.hpp"
-#include "storage/v2/temporal_period.hpp"
+#include "utils/timespan.hpp"
 #include <json/json.hpp>
 namespace storage {
 
@@ -194,24 +194,24 @@ struct Delta {
         command_id(command_id),
         vertex_edge({edge_type, vertex, edge}) {}
 
-  Delta(DeleteObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const TemporalPeriod& vt)
+  Delta(DeleteObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::DELETE_OBJECT), timestamp(timestamp), command_id(command_id), vt(vt) {}
 
-  Delta(RecreateObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const TemporalPeriod& vt)
+  Delta(RecreateObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::RECREATE_OBJECT), timestamp(timestamp), command_id(command_id), vt(vt) {}
 
-  Delta(AddLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const TemporalPeriod& vt)
+  Delta(AddLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::ADD_LABEL), timestamp(timestamp), command_id(command_id), vt(vt), label(label) {}
 
-  Delta(RemoveLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const TemporalPeriod& vt)
+  Delta(RemoveLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::REMOVE_LABEL), timestamp(timestamp), command_id(command_id), vt(vt), label(label) {}
 
   Delta(SetPropertyTag, PropertyId key, const PropertyValue &value, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const TemporalPeriod& vt)
+        uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::SET_PROPERTY), timestamp(timestamp), command_id(command_id), vt(vt), property({key, value}) {}
 
   Delta(AddInEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const TemporalPeriod& vt)
+        uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::ADD_IN_EDGE),
         timestamp(timestamp),
         command_id(command_id),
@@ -219,7 +219,7 @@ struct Delta {
         vertex_edge({edge_type, vertex, edge}) {}
 
   Delta(AddOutEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const TemporalPeriod& vt)
+        uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::ADD_OUT_EDGE),
         timestamp(timestamp),
         command_id(command_id),
@@ -227,7 +227,7 @@ struct Delta {
         vertex_edge({edge_type, vertex, edge}) {}
 
   Delta(RemoveInEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const TemporalPeriod& vt)
+        uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::REMOVE_IN_EDGE),
         timestamp(timestamp),
         command_id(command_id),
@@ -235,7 +235,7 @@ struct Delta {
         vertex_edge({edge_type, vertex, edge}) {}
 
   Delta(RemoveOutEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const TemporalPeriod& vt)
+        uint64_t command_id, const utils::TimeSpan& vt)
       : action(Action::REMOVE_OUT_EDGE),
         timestamp(timestamp),
         command_id(command_id),
@@ -282,7 +282,7 @@ struct Delta {
   nlohmann::json add_info;
   //hjm end
 
-  TemporalPeriod vt;
+  utils::TimeSpan vt;
 
   union {
     LabelId label;

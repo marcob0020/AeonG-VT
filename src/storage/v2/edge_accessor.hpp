@@ -12,7 +12,7 @@
 #pragma once
 
 #include <optional>
-#include <query/temporal_filter.hpp>
+#include <utils/temporal_filter.hpp>
 #include <utils/interval.hpp>
 
 #include "storage/v2/edge.hpp"
@@ -68,13 +68,13 @@ class EdgeAccessor final {
   bool HasTemporalFeatures() const;
 
   /// @return TemporalFilter corresponding to " FOR VT AS OF <transaction_now> "
-  query::TemporalFilter GetNowFilter() const;
+  utils::TemporalFilter GetNowFilter() const;
 
   /// @return true if the object is visible from the current transaction
   bool IsVisible(View view) const;
 
   /// @return true if the object is visible  from the current transaction and exists in the given vt range
-  bool IsVisible(View view, const query::TemporalFilter& vt) const;
+  bool IsVisible(View view, const utils::TemporalFilter& vt) const;
 
   VertexAccessor FromVertex() const;
 
@@ -88,7 +88,7 @@ class EdgeAccessor final {
 
   /// Set a property value and return the old value. The new value is valid only for the given vt
   /// @throw std::bad_alloc
-  Result<storage::PropertyValue> SetProperty(PropertyId property, const PropertyValue &value, const TemporalPeriod& vt);
+  Result<storage::PropertyValue> SetProperty(PropertyId property, const PropertyValue &value, const utils::TimeSpan& vt);
 
   /// Remove all properties and return old values for each removed property.
   /// @throw std::bad_alloc
@@ -96,19 +96,19 @@ class EdgeAccessor final {
 
   /// Remove all properties in a given temporal range and return old values for each removed property.
   /// @throw std::bad_alloc
-  Result<std::map<PropertyId, PropertyValue>> ClearProperties(const TemporalPeriod& vt);
+  Result<std::map<PropertyId, PropertyValue>> ClearProperties(const utils::TimeSpan& vt);
 
   /// @throw std::bad_alloc
   Result<PropertyValue> GetProperty(PropertyId property, View view) const;
 
   /// @throw std::bad_alloc
-  Result<utils::valued_timeline<PropertyValue>> GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const;
+  Result<utils::valued_timeline<PropertyValue>> GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const;
 
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;
 
   /// @throw std::bad_alloc
-  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const query::TemporalFilter& vt) const;
+  Result<std::map<PropertyId, PropertyValue>> Properties(View view, const utils::TemporalFilter& vt) const;
 
   Gid Gid() const noexcept {
     if (config_.properties_on_edges) {

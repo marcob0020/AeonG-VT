@@ -79,7 +79,7 @@ inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, Vie
 /// This overload takes the TemporalFilter vt as a parameter. Only matching deltas are applied
 /// Callback must consider vt(sliced)
 template <typename TCallback>
-inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, View view, const query::TemporalFilter &vt, const TCallback &callback) {
+inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, View view, const utils::TemporalFilter &vt, const TCallback &callback) {
   // if the transaction is not committed, then its deltas have transaction_id for the timestamp, otherwise they have
   // its commit timestamp set.
   // This allows the transaction to see its changes even though it's committed.
@@ -132,7 +132,7 @@ inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, Vie
 }
 
 template <typename TCallback>
-inline void ApplyTemporalDeltasForRead(Transaction *transaction, const Delta *delta, View view, const TCallback &callback, const query::TemporalFilter &vt) {
+inline void ApplyTemporalDeltasForRead(Transaction *transaction, const Delta *delta, View view, const TCallback &callback, const utils::TemporalFilter &vt) {
   // if the transaction is not committed, then its deltas have transaction_id for the timestamp, otherwise they have
   // its commit timestamp set.
   // This allows the transaction to see its changes even though it's committed.
@@ -221,9 +221,9 @@ inline Delta *CreateDeleteObjectDelta(Transaction *transaction) {
 /// a pointer to the created delta. It doesn't perform any linking of the delta
 /// and is primarily used to create the first delta for an object (that must be
 /// a `DELETE_OBJECT` delta).
-/// This overload takes the TemporalPeriod vt as a parameter.
+/// This overload takes the utils::TimeSpan vt as a parameter.
 /// @throw std::bad_alloc
-inline Delta *CreateDeleteObjectDelta(Transaction *transaction, const TemporalPeriod& vt) {
+inline Delta *CreateDeleteObjectDelta(Transaction *transaction, const utils::TimeSpan& vt) {
   transaction->EnsureCommitTimestampExists();
   auto delta =&transaction->deltas.emplace_back(Delta::DeleteObjectTag(), transaction->commit_timestamp.get(),
                                            transaction->command_id, vt);
@@ -308,10 +308,10 @@ inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, Args &
 
 /// This function creates a delta in the transaction for the object and links
 /// the delta into the object's delta list.
-/// This overload takes the TemporalPeriod vt as a parameter. Only matching deltas are applied
+/// This overload takes the utils::TimeSpan vt as a parameter. Only matching deltas are applied
 /// @throw std::bad_alloc
 template <typename TObj, class... Args>
-inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, const TemporalPeriod& vt, Args &&...args) {
+inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, const utils::TimeSpan& vt, Args &&...args) {
   transaction->EnsureCommitTimestampExists();
   auto delta = &transaction->deltas.emplace_back(std::forward<Args>(args)..., transaction->commit_timestamp.get(),
                                                  transaction->command_id, vt);

@@ -14,7 +14,7 @@
 
 #include <optional>
 #include <variant>
-#include <query/temporal_filter.hpp>
+#include <utils/temporal_filter.hpp>
 
 #include "gflags/gflags.h"
 
@@ -56,7 +56,7 @@ struct PlanningContext {
   // std::pair<storage::PropertyValue,storage::PropertyValue> history_infos_;
   //hjm end
 
-  std::optional<std::tuple<Expression*,Expression*,TemporalQueryType>> vt_infos_;
+  std::optional<std::tuple<Expression*,Expression*,utils::TemporalQueryType>> vt_infos_;
 };
 
 template <class TDbAccessor>

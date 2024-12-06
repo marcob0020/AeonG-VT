@@ -23,7 +23,7 @@
 #include "query/typed_value.hpp"
 #include "storage/v2/property_value.hpp"
 #include "utils/typeinfo.hpp"
-#include "query/temporal_filter.hpp"
+#include "utils/temporal_filter.hpp"
 
 cpp<#
 
@@ -387,9 +387,9 @@ cpp<#
    (vt-right "Expression *" :initval "nullptr" :scope :public
                  :slk-save #'slk-save-ast-pointer
                  :slk-load (slk-load-ast-pointer "Expression"))
-   (vt-query-type "TemporalQueryType" :initval "TemporalQueryType::NONE" :scope :public
+   (vt-query-type "utils::TemporalQueryType" :initval "utils::TemporalQueryType::NONE" :scope :public
                     :slk-save #'slk-save-ast-pointer
-                    :slk-load (slk-load-ast-pointer "TemporalQueryType")))
+                    :slk-load (slk-load-ast-pointer "utils::TemporalQueryType")))
   (:public
     #>cpp
     using ::utils::Visitable<HierarchicalTreeVisitor>::Accept;
@@ -403,7 +403,7 @@ cpp<#
     cpp<#)
   (:protected
     #>cpp
-    Vt(query::Expression *vt_left, query::Expression *vt_right, TemporalQueryType type)
+    Vt(query::Expression *vt_left, query::Expression *vt_right, utils::TemporalQueryType type)
         : vt_left_(vt_left), vt_right_(vt_right) {}
     cpp<#)
   (:private

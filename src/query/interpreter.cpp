@@ -918,7 +918,7 @@ PullPlan::PullPlan(const std::shared_ptr<CachedPlan> plan, const Parameters &par
   auto vt_filter = interpreter_context->vt;
 
   if (vt_filter == std::nullopt) {
-    vt_filter = TemporalFilter();
+    vt_filter = utils::TemporalFilter();
   }
   ctx_.addition_vt = vt_filter.value();
 }
@@ -1144,22 +1144,22 @@ PreparedQuery PrepareCypherQuery(ParsedQuery parsed_query, std::map<std::string,
   auto vt_exprs = plan->getVTHistoryInfo();
   if(vt_exprs) {
     switch (std::get<2>(vt_exprs.value())) {
-      case TemporalQueryType::NONE:
-        interpreter_context->vt = TemporalFilter();
+      case utils::TemporalQueryType::NONE:
+        interpreter_context->vt = utils::TemporalFilter();
       break;
-      case TemporalQueryType::AS_OF: {
+      case utils::TemporalQueryType::AS_OF: {
         auto as_of_vt = EvaluateTemporalValue(&evaluator,std::get<0>(vt_exprs.value()));
-        TemporalFilter tf;
-        tf.type = TemporalQueryType::AS_OF;
+        utils::TemporalFilter tf;
+        tf.type = utils::TemporalQueryType::AS_OF;
         tf.first = as_of_vt.value();
         interpreter_context->vt = tf;
       }
       break;
-      case TemporalQueryType::FROM_TO: {
+      case utils::TemporalQueryType::FROM_TO: {
         auto from_vt = EvaluateTemporalValue(&evaluator,std::get<0>(vt_exprs.value()));
         auto to_vt = EvaluateTemporalValue(&evaluator,std::get<1>(vt_exprs.value()));
-        TemporalFilter tf;
-        tf.type = TemporalQueryType::FROM_TO;
+        utils::TemporalFilter tf;
+        tf.type = utils::TemporalQueryType::FROM_TO;
         tf.first = from_vt.value();
         tf.second = to_vt.value();
         interpreter_context->vt = tf;
@@ -1167,7 +1167,7 @@ PreparedQuery PrepareCypherQuery(ParsedQuery parsed_query, std::map<std::string,
       break;
     }
   }else {
-    interpreter_context->vt = TemporalFilter();
+    interpreter_context->vt = utils::TemporalFilter();
   }
 
   summary->insert_or_assign("cost_estimate", plan->cost());

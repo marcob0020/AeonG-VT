@@ -5,31 +5,31 @@
 #ifndef INTERVAL_HPP
 #define INTERVAL_HPP
 #include <forward_list>
-#include <storage/v2/temporal_period.hpp>
+#include <utils/timespan.hpp>
 
 #include "vt_temporal.hpp"
 
 namespace utils {
 template <typename T>
 class interval_item {
-  storage::TemporalPeriod _timespan;
+  utils::TimeSpan _timespan;
   T _value;
 public:
-  interval_item(storage::TemporalPeriod timespan, T value): _timespan(timespan), _value(value) {}
-  storage::TemporalPeriod timespan() const { return _timespan; }
-  storage::TemporalPeriod& timespan() { return _timespan; }
+  interval_item(utils::TimeSpan timespan, T value): _timespan(timespan), _value(value) {}
+  utils::TimeSpan timespan() const { return _timespan; }
+  utils::TimeSpan& timespan() { return _timespan; }
   T& value()  { return _value; }
   T value() const { return _value; }
 };
 
 template<typename T>
 class interval_item<bool> {
-  storage::TemporalPeriod _timespan;
+  utils::TimeSpan _timespan;
 public:
-  interval_item(storage::TemporalPeriod timespan, T value): _timespan(timespan) {}
-  explicit interval_item(storage::TemporalPeriod timespan): _timespan(timespan) {}
-  storage::TemporalPeriod timespan() const  { return _timespan; }
-  storage::TemporalPeriod& timespan()   { return _timespan; }
+  interval_item(utils::TimeSpan timespan, T value): _timespan(timespan) {}
+  explicit interval_item(utils::TimeSpan timespan): _timespan(timespan) {}
+  utils::TimeSpan timespan() const  { return _timespan; }
+  utils::TimeSpan& timespan()   { return _timespan; }
   T value() const { return true; }
 };
 
@@ -38,14 +38,14 @@ class valued_timeline {
 private:
   std::forward_list<interval_item<T>> _container_interval;
 
-  storage::TemporalPeriod from_to;
+  utils::TimeSpan from_to;
 
 public:
   using Iterator = typename decltype(_container_interval)::iterator;
   using ConstIterator = typename decltype(_container_interval)::const_iterator;
   using Item = interval_item<T>;
   using Container = std::forward_list<interval_item<T>>;
-  using TimeSpan = storage::TemporalPeriod;
+  using TimeSpan = utils::TimeSpan;
 
   explicit valued_timeline(const Container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
   valued_timeline(): _container_interval(), from_to({VTDateTime::min(), VTDateTime::max()}) {}
@@ -91,18 +91,18 @@ class timeline {
   private:
     std::forward_list<interval_item<bool>> _container_interval;
 
-    storage::TemporalPeriod from_to;
+    utils::TimeSpan from_to;
 
   public:
     using Iterator = std::forward_list<interval_item<bool>>::iterator;
     using ConstIterator = std::forward_list<interval_item<bool>>::const_iterator;
     using Item = interval_item<bool>;
     using Container = std::forward_list<interval_item<bool>>;
-    using TimeSpan = storage::TemporalPeriod;
+    using TimeSpan = utils::TimeSpan;
 
     explicit timeline(const Container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
-    timeline(): _container_interval(), from_to({VTDateTime::min(), VTDateTime::max()}) {}
-    timeline(const TimeSpan& interval) : _container_interval(), from_to(interval) {}
+    timeline(): from_to({VTDateTime::min(), VTDateTime::max()}) {}
+    timeline(const TimeSpan& interval) : from_to(interval) {}
 
 
     timeline(const timeline& other): _container_interval(other._container_interval), from_to(other.from_to) {}

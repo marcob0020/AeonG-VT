@@ -76,8 +76,8 @@
   }
 
 namespace history_delta{
-extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type);
-extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType types_);
+extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type);
+extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType types_);
 extern  std::vector<std::string> splits(const std::string &str, const std::string &pattern);
 };
 
@@ -403,7 +403,7 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::Hist
     if(!delete_flag){
         auto values=TypedValue(current_vertex_);
         history_add_.emplace_back(values);
-        if(historyContext_.types==TemporalQueryType::AS_OF){
+        if(historyContext_.types==utils::TemporalQueryType::AS_OF){
           return delete_flag;
         }
     }
@@ -499,7 +499,7 @@ class ScanAllCursor : public Cursor {
 
         historyContext_.c_ts=ts;//ts
         historyContext_.c_te=te;//te
-        historyContext_.types= ts==te? TemporalQueryType::AS_OF : TemporalQueryType::FROM_TO;
+        historyContext_.types= ts==te? utils::TemporalQueryType::AS_OF : utils::TemporalQueryType::FROM_TO;
         count++;
       }
 
@@ -847,7 +847,7 @@ bool Expand::ExpandCursor::Pull(Frame &frame, ExecutionContext &context) {
 
       historyContext_.c_ts = ts;//ts
       historyContext_.c_te = te;//te
-      historyContext_.types = (ts==te? TemporalQueryType::AS_OF: TemporalQueryType::FROM_TO);
+      historyContext_.types = (ts==te? utils::TemporalQueryType::AS_OF: utils::TemporalQueryType::FROM_TO);
 
       count++;
     }
@@ -988,7 +988,7 @@ void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current
   if(tt_ts<=obj_te&&obj_ts<=tt_te){//obj_ts<=tt_te
     if(history_delta::TemporalCheck(tt_ts,tt_te,historyContext_.c_ts,historyContext_.c_te,historyContext_.types)){////Determine whether the node of the current database needs to be deleted
       history_add_.emplace_back(current_edge,vertex);
-      if(historyContext_.types== TemporalQueryType::AS_OF) return;
+      if(historyContext_.types== utils::TemporalQueryType::AS_OF) return;
     }
   }
 
@@ -1028,7 +1028,7 @@ void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t cu
   }
   
   //If there is no need to delete the current node and the type is as of, return directly without traversing historical data.
-  if(!delete_flag&historyContext_.types==TemporalQueryType::AS_OF){
+  if(!delete_flag&historyContext_.types==utils::TemporalQueryType::AS_OF){
     context.db_accessor->saveHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
     return ;
   }
@@ -1451,7 +1451,7 @@ class ExpandVariableCursor : public Cursor {
 
         historyContext_.c_ts=ts;//ts
         historyContext_.c_te=te;//te
-        historyContext_.types=(ts==te? TemporalQueryType::AS_OF : TemporalQueryType::FROM_TO);
+        historyContext_.types=(ts==te? utils::TemporalQueryType::AS_OF : utils::TemporalQueryType::FROM_TO);
         count++;
       }
 

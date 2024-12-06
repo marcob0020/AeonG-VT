@@ -11,7 +11,7 @@
 #include "storage/v2/name_id_mapper.hpp"
 #include "storage/v2/delta.hpp"
 #include <json/json.hpp>
-#include <query/temporal_filter.hpp>
+#include <utils/temporal_filter.hpp>
 
 namespace history_delta {
 
@@ -23,8 +23,8 @@ struct HistoryContext{
   std::map<kv_key,storage::Vertex*> all_vertex_; //historical data map (gid,ts) -> Vertex    历史数据+现有数据的集合map gid,transaction_ts vertex
   uint64_t c_ts; //TT start constraint
   uint64_t c_te; //TT end constraint
-  query::TemporalQueryType types; //type of constraint
-  query::TemporalFilter vt;
+  utils::TemporalQueryType types; //type of constraint
+  utils::TemporalFilter vt;
 };
 
 struct HistoryContextOnce{
@@ -43,16 +43,16 @@ class HistoryDelta final {
 
   void GetDelta(const std::string &gid_name) const;
 
-  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type);
-  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type, const query::TemporalFilter& filter);
+  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type);
+  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type, const utils::TemporalFilter& filter);
 
-  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid);
-  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(storage::Gid gid, uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type, const query::TemporalFilter& filter);
+  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type,uint64_t gid);
+  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(storage::Gid gid, uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type, const utils::TemporalFilter& filter);
 
-  std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid);
+  std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type,uint64_t gid);
 
-   std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts, uint64_t c_te, query::TemporalQueryType type,
-                                                 uint64_t vertex_gid, const query::TemporalFilter &vt_filter);
+   std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts, uint64_t c_te, utils::TemporalQueryType type,
+                                                 uint64_t vertex_gid, const utils::TemporalFilter &vt_filter);
 
    void GetTimeTableAll();
   void SaveDeltaAll();

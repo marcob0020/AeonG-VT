@@ -19,7 +19,7 @@
 #include "query/parameters.hpp"
 #include "query/plan/profile.hpp"
 #include "query/trigger.hpp"
-#include "query/temporal_filter.hpp"
+#include "utils/temporal_filter.hpp"
 #include "utils/async_timer.hpp"
 
 namespace query {

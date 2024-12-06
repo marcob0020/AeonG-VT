@@ -14,7 +14,7 @@ set(storage_v2_src_files
     history_delta.cpp
     history_vertex.hpp
     history_edge.hpp
-        temporal_period.hpp
+        ../../utils/timespan.hpp
         vt_store.cpp
         vt_store.hpp)
 

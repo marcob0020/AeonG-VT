@@ -178,7 +178,7 @@ namespace utils {
   }
 
   bool timeline::covered() const {
-    return TimelineCoverage(storage::TemporalPeriod(), _container_interval);
+    return TimelineCoverage(utils::TimeSpan(), _container_interval);
   }
 
   bool timeline::covered(TimeSpan from_to) const {
