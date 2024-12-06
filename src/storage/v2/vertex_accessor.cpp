@@ -1049,11 +1049,11 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
   return std::move(value);
 }
 
-Result<utils::interval<PropertyValue>> VertexAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
+Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
-  utils::interval<PropertyValue> res;
+  utils::valued_timeline<PropertyValue> res;
 
   Delta *delta = nullptr;
   {

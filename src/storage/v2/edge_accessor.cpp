@@ -443,11 +443,11 @@ Result<PropertyValue> EdgeAccessor::GetProperty(PropertyId property, View view) 
   return std::move(value);
 }
 
-Result<utils::interval<PropertyValue>> EdgeAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
+Result<utils::valued_timeline<PropertyValue>> EdgeAccessor::GetProperty(PropertyId property, View view, const query::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
-  utils::interval<PropertyValue> res;
+  utils::valued_timeline<PropertyValue> res;
   if (!config_.properties_on_edges) return res;
 
   Delta *delta = nullptr;

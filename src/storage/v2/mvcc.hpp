@@ -380,8 +380,49 @@ inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, const 
   return delta;
 }
 
-inline void EncodeIntoVtStore(Delta *delta) {
+inline void EncodeIntoVtStore(const Delta *delta, Vertex *vertex) {
+  switch(delta->action) {
+    case Delta::Action::ADD_LABEL:
+      vertex->vt_store.DeleteLabel(delta->label, delta->vt);
+    break;
+    case Delta::Action::REMOVE_LABEL:
+      vertex->vt_store.SetLabel(delta->label, delta->vt);
+    break;
+    case Delta::Action::SET_PROPERTY:
+      vertex->vt_store.SetProperty(delta->property.key, delta->property.value, delta->vt);
+    break;
+    case Delta::Action::ADD_IN_EDGE:
+      vertex->vt_store.DeleteIngoingEdge(std::tuple<EdgeTypeId, Vertex *, EdgeRef>(delta->vertex_edge.edge_type, delta->vertex_edge.vertex, delta->vertex_edge.edge), delta->vt);
+    break;
+    case Delta::Action::ADD_OUT_EDGE:
+      vertex->vt_store.DeleteOutgoingEdge(std::tuple<EdgeTypeId, Vertex *, EdgeRef>(delta->vertex_edge.edge_type, delta->vertex_edge.vertex, delta->vertex_edge.edge), delta->vt);
+    break;
+    case Delta::Action::REMOVE_IN_EDGE:
+      vertex->vt_store.SetIngoingEdge(std::tuple<EdgeTypeId, Vertex *, EdgeRef>(delta->vertex_edge.edge_type, delta->vertex_edge.vertex, delta->vertex_edge.edge), delta->vt);
+    break;
+    case Delta::Action::REMOVE_OUT_EDGE:
+      vertex->vt_store.SetOutgoingEdge(std::tuple<EdgeTypeId, Vertex *, EdgeRef>(delta->vertex_edge.edge_type, delta->vertex_edge.vertex, delta->vertex_edge.edge), delta->vt);
+    break;
+    case Delta::Action::RECREATE_OBJECT:
+      vertex->vt_store.DeleteObject(delta->vt);
+    break;
+    case Delta::Action::DELETE_OBJECT:
+      vertex->vt_store.CreateObject(delta->vt);
+    break;
+  }
+}
 
+inline void EncodeIntoVtStore(const Delta *delta, Edge *edge) {
+  switch(delta->action) {
+    case Delta::Action::SET_PROPERTY:
+      edge->vt_store.SetProperty(delta->property.key, delta->property.value, delta->vt);
+    break;
+    case Delta::Action::RECREATE_OBJECT:
+      //edge->vt_store.DeleteObject(delta->vt);
+    break;
+    default:
+      break;
+  }
 }
 
 }  // namespace storage

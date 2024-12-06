@@ -670,12 +670,47 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const Ver
   return new_vertex;
 }
 
+storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, TemporalPeriod> & maybe_props,history_delta::HistoryContext& historyContext_) {
+  Delta* deltas=another.vertex_->delta;
+  //Current info
+  std::vector<LabelId> maybe_labels=another.vertex_->labels;
+  uint64_t tt_ts=std::get<1>(maybe_props);
+  uint64_t tt_te=std::get<2>(maybe_props);
+  std::map<PropertyId,PropertyValue> maybe_properties=std::get<0>(maybe_props);
+
+  PropertyId tt_property_id = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("transaction_ts"));
+  PropertyId tt_property_id2 = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("transaction_te"));
+  PropertyId vt_property_id = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("valid_ts"));
+  PropertyId vt_property_id2 = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("valid_te"));
+
+  PropertyValue tt_property_value(static_cast<int64_t>(tt_ts));
+  PropertyValue tt_property_value2(static_cast<int64_t>(tt_te));
+  maybe_properties[tt_property_id]=tt_property_value;
+  maybe_properties[tt_property_id2]=tt_property_value2;
+
+  PropertyValue vt_property_value(TemporalData(TemporalType::VtDateTime,std::get<3>(maybe_props).first.get_microseconds()));
+  PropertyValue vt_property_value2(TemporalData(TemporalType::VtDateTime,std::get<3>(maybe_props).second.get_microseconds()));
+  maybe_properties[vt_property_id]=vt_property_value;
+  maybe_properties[vt_property_id2]=vt_property_value2;
+
+  HistoryVertex new_vertex(another.vertex_->gid,tt_ts,tt_te);
+  new_vertex.labels=maybe_labels;
+  new_vertex.properties=maybe_properties;
+
+  new_vertex.in_edges=another.vertex_->in_edges;
+  new_vertex.out_edges=another.vertex_->out_edges;
+  new_vertex.vt = std::get<3>(maybe_props);
+
+  return new_vertex;
+}
+
 
 storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(const EdgeAccessor &another,nlohmann::json gid_delta_){
-  auto maybe_properties=another.edge_.ptr->properties.Properties();
-  auto from_gid=another.FromVertex().Gid();
-  auto to_gid=another.ToVertex().Gid();
-  //还原到最近的dead info
+  std::map<PropertyId, PropertyValue> maybe_properties=another.edge_.ptr->properties.Properties();
+  Gid from_gid=another.FromVertex().Gid();
+  Gid to_gid=another.ToVertex().Gid();
+
+  //restore most recently dead info
   auto deltas=another.edge_.ptr->delta;
   while (deltas != nullptr) {
     switch (deltas->action) {
@@ -699,15 +734,19 @@ storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(const EdgeAccess
   auto property_value = storage::PropertyValue(gid_delta_["TT_TS"].get<int64_t>());
   maybe_properties[property_id]=property_value;
 
+  //VT
+  TemporalPeriod vt = TemporalPeriod(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
+
   auto property_id2 = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("transaction_te"));
   auto property_value2 = storage::PropertyValue(gid_delta_["TT_TE"].get<int64_t>());
   maybe_properties[property_id2]=property_value2;
-  auto tt_ts=gid_delta_["TT_TS"].get<uint64_t>();
-  auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
+  uint64_t tt_ts=gid_delta_["TT_TS"].get<uint64_t>();
+  uint64_t tt_te=gid_delta_["TT_TE"].get<uint64_t>();
   // std::cout<<"CreateHistoryEdgeFromKV1:"<<tt_ts<<" "<<tt_te<<" "<<from_gid.AsUint()<<" "<<to_gid.AsUint()<<" ""\n";
   //TODO edges
   auto history_edge=HistoryEdge(another.edge_.ptr->gid,tt_ts,tt_te,from_gid,to_gid,another.EdgeType(),nullptr); 
   history_edge.properties=maybe_properties;
+  history_edge.vt = vt;
   return history_edge;
 }
 
@@ -740,10 +779,15 @@ storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(storage::History
   maybe_properties[property_id2]=property_value2;
   auto tt_ts=gid_delta_["TT_TS"].get<uint64_t>();
   auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
+
+  //VT
+  TemporalPeriod vt = TemporalPeriod(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
+
   // std::cout<<"CreateHistoryEdgeFromKV2:"<<tt_ts<<" "<<tt_te<<" "<<edge_.from_gid.AsUint()<<" "<<edge_.to_gid.AsUint()<<"\n";
   //TODO edges
   auto history_edge=HistoryEdge(edge_.gid,tt_ts,tt_te,edge_.from_gid,edge_.to_gid,edge_.type,nullptr);
   history_edge.properties=maybe_properties;
+  history_edge.vt=vt;
   return history_edge;
 }
 
@@ -773,6 +817,49 @@ Result<std::vector<EdgeAccessor>> Storage::Accessor::Edges(std::vector<std::tupl
     }
 
     return std::move(ret);
+}
+
+utils::timeline<bool> EdgeVt(Vertex* from_vertex, bool ingoing, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const query::TemporalFilter& vt) {
+  utils::timeline<bool> from_coverage = ingoing? from_vertex->vt_store.GetIngoingEdge(edge_, vt.get_period()) : from_vertex->vt_store.GetOutgoingEdge(edge_, vt.get_period());
+  auto before_delta=from_vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_OUT_EDGE: {
+        if (ingoing)
+          continue;
+
+        from_coverage.remove(before_delta->vt.get_pair());
+        break;
+      }
+      case storage::Delta::Action::REMOVE_OUT_EDGE: {
+        if (ingoing)
+            continue;
+
+        from_coverage.add(before_delta->vt.get_pair(), true);
+        break;
+      }
+      case storage::Delta::Action::ADD_IN_EDGE: {
+        if(!ingoing)
+          continue;
+
+        from_coverage.remove(before_delta->vt.get_pair());
+        break;
+      }
+      case storage::Delta::Action::REMOVE_IN_EDGE:{
+        if(!ingoing)
+          continue;
+
+        from_coverage.add(before_delta->vt.get_pair(), true);
+        break;
+      }
+      default:break;
+    }
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+
+  }
+
+  return from_coverage;
 }
 
 std::optional<VertexAccessor> Storage::Accessor::FindDeleteVertex(Gid gid, View view){
@@ -2125,7 +2212,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   }
 
   auto from_ts=from_vertex->ve_tt_ts;
-  utils::interval<bool> from_coverage; //todo
+  utils::timeline<bool> from_coverage; //todo
   auto before_delta=from_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -2156,7 +2243,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   }
 
   auto to_ts=to_vertex->ve_tt_ts;
-  utils::interval<bool> to_coverage; //todo
+  utils::timeline<bool> to_coverage; //todo
   before_delta=to_vertex->delta;
   while (before_delta != nullptr){
     bool delta_is_edge=false;
@@ -2211,7 +2298,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     MG_ASSERT(!to_vertex->deleted, "Invalid database state!");
   }
 
-  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const utils::interval<bool>& coverage) {
+  auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const utils::timeline<bool>& coverage) {
     std::tuple<EdgeTypeId, Vertex *, EdgeRef> link(edge_type, vertex, edge_ref);
     if (coverage.covered({vt.first,vt.second}))
       return true;
@@ -2245,8 +2332,19 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     }
   }
 
+  auto createAndFillInDelta = [](utils::timeline<bool> vt_range, auto fillin_fn) {
+    for (auto& vt: vt_range) {
+      fillin_fn(vt);
+    }
+  };
+
+  utils::timeline<bool> vt_range
+
   if (config_.properties_on_edges) {
     auto *edge_ptr = edge_ref.ptr;
+
+
+
     auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, Delta::RecreateObjectTag(), vt);
     edge_ptr->deleted = true;
     //hjm begin store edge to reconstruct
@@ -3209,7 +3307,7 @@ void Storage::CollectGarbage() {
       uint64_t start=a.transaction_st;
       uint64_t commit=a.commit_timestamp;
       if(a.transaction_st!=a.commit_timestamp){
-        saved_history_deltas_->SaveDelta(a.gid,a.to_gid,start,commit,a,name_id_mapper_);
+        saved_history_deltas_->SaveDelta(a,name_id_mapper_);
         saved_gids.emplace_back(a.gid,a.transaction_st,a.commit_timestamp);
       }
     }
@@ -3384,6 +3482,8 @@ void Storage::CollectGarbage() {
               auto gids=vertex->gid;
 
             }
+            if (vertex->has_vt)
+              EncodeIntoVtStore(&delta, vertex);
             break;
           }
           case PreviousPtr::Type::EDGE: {
@@ -3398,6 +3498,8 @@ void Storage::CollectGarbage() {
             if (edge->deleted) {
               current_deleted_edges.push_back(edge->gid);
             }
+            if (edge->has_vt)
+              EncodeIntoVtStore(&delta, edge);
             break;
           }
           case PreviousPtr::Type::DELTA: {
@@ -3407,6 +3509,8 @@ void Storage::CollectGarbage() {
               // part of the suffix later.
               break;
             }
+            Vertex* vertex = nullptr;
+            Edge* edge = nullptr;
             std::unique_lock<utils::SpinLock> guard;
             {
               // We need to find the parent object in order to be able to use
@@ -3418,10 +3522,12 @@ void Storage::CollectGarbage() {
               switch (parent.type) {
                 case PreviousPtr::Type::VERTEX:{
                   guard = std::unique_lock<utils::SpinLock>(parent.vertex->lock);
+                  vertex = prev.vertex;
                   break;
                 }
                 case PreviousPtr::Type::EDGE:{
                   guard = std::unique_lock<utils::SpinLock>(parent.edge->lock);
+                  edge = prev.edge;
                   break;
                 }
                 case PreviousPtr::Type::DELTA:
@@ -3436,6 +3542,14 @@ void Storage::CollectGarbage() {
             }
             Delta *prev_delta = prev.delta;
             prev_delta->next.store(nullptr, std::memory_order_release);
+
+            if (vertex != nullptr)
+              if (vertex->has_vt)
+                EncodeIntoVtStore(&delta, vertex);
+            if (edge != nullptr)
+              if (edge->has_vt)
+                EncodeIntoVtStore(&delta,edge);
+
             break;
           }
           case PreviousPtr::Type::NULLPTR: {

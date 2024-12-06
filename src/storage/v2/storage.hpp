@@ -227,11 +227,15 @@ class Storage final {
       return storage_->saved_history_deltas_;
     }
     storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::HistoryContext& historyContext_);
+    storage::HistoryVertex CreateHistoryVertexFromDelta(const VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, TemporalPeriod> & maybe_props,history_delta::HistoryContext& historyContext_);
     storage::HistoryVertex CreateHistoryVertexFromKV(const storage::HistoryVertex ,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_);
     storage::HistoryVertex CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(const EdgeAccessor &another,nlohmann::json gid_delta_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(storage::HistoryEdge edge_,nlohmann::json gid_delta_);
     Result<std::vector<EdgeAccessor>> Edges(std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> &edges_,const std::vector<EdgeTypeId> &edge_types,storage::Gid gid,bool from,std::optional<storage::Gid> existing_gid);
+    utils::timeline<bool> EdgeVt(Vertex* from_vertex, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const query::TemporalFilter& vt);
+
+
     Gid IdToGid(const uint64_t key);
     std::optional<VertexAccessor> FindDeleteVertex(Gid gid, View view);
 

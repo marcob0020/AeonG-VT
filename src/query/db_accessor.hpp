@@ -86,13 +86,13 @@ class EdgeAccessor final {
     storage::TemporalPeriod nowPeriod = impl_.GetNowFilter().get_period();
 
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(std::make_pair(nowPeriod.first, nowPeriod.second));
+      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(nowPeriod);
     return impl_.GetProperty(key, view);
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, vt)->get_single(std::make_pair(vt.first,vt.second));
+      return impl_.GetProperty(key, view, vt)->get_single(vt.get_period());
     return impl_.GetProperty(key, view);
   }
 
@@ -232,13 +232,13 @@ class VertexAccessor final {
     storage::TemporalPeriod nowPeriod = impl_.GetNowFilter().get_period();
 
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(std::make_pair(nowPeriod.first,nowPeriod.second));
+      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_single(nowPeriod);
     return impl_.GetProperty(key, view);
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, vt)->get_single(std::make_pair(vt.first,vt.second));
+      return impl_.GetProperty(key, view, vt)->get_single(vt.get_period());
     return impl_.GetProperty(key, view);
   }
 

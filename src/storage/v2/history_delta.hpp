@@ -24,6 +24,7 @@ struct HistoryContext{
   uint64_t c_ts; //TT start constraint
   uint64_t c_te; //TT end constraint
   query::TemporalQueryType types; //type of constraint
+  query::TemporalFilter vt;
 };
 
 struct HistoryContextOnce{
@@ -43,13 +44,21 @@ class HistoryDelta final {
   void GetDelta(const std::string &gid_name) const;
 
   std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type);
+  std::pair<std::vector<nlohmann::json>,bool> GetVertexInfo(storage::Gid gid,uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type, const query::TemporalFilter& filter);
+
   std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid);
+  std::pair<std::vector<nlohmann::json>,bool> GetEdgeInfo(storage::Gid gid, uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type, const query::TemporalFilter& filter);
+
   std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts,uint64_t c_te,query::TemporalQueryType type,uint64_t gid);
-  void GetTimeTableAll();
+
+   std::vector<nlohmann::json> GetDeleteEdgeInfo(uint64_t c_ts, uint64_t c_te, query::TemporalQueryType type,
+                                                 uint64_t vertex_gid, const query::TemporalFilter &vt_filter);
+
+   void GetTimeTableAll();
   void SaveDeltaAll();
   void SaveAnchorAll(std::map<std::string, std::string> &value);
 
-  void SaveDelta(storage::Gid gid,const std::optional<storage::Gid> to_gid,const uint64_t start,const uint64_t commit,storage::Delta& delta,storage::NameIdMapper &name_id_mapper);
+  void SaveDelta(storage::Delta& delta,storage::NameIdMapper &name_id_mapper);
   void SaveVertexAnchor(storage::Gid gid,const uint64_t start,std::vector<storage::LabelId> &labels,std::map<storage::PropertyId, storage::PropertyValue> &maybe_properties,storage::NameIdMapper &name_id_mapper);
   void SaveEdgeAnchor(storage::Gid gid,const uint64_t start,std::map<storage::PropertyId, storage::PropertyValue> &maybe_properties,storage::NameIdMapper &name_id_mapper);
   void SaveVertexAnchor(storage::Gid gid,const uint64_t start,nlohmann::json data);

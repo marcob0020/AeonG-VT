@@ -17,7 +17,8 @@ set(utils_src_files
     uuid.cpp
     vt_temporal.cpp
         interval.cpp
-        interval.hpp)
+        interval.hpp
+        temporal_functions.hpp)
 
 find_package(Boost REQUIRED)
 find_package(fmt REQUIRED)

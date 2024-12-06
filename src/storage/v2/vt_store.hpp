@@ -16,7 +16,7 @@ namespace storage {
   struct Vertex;
 
 
-  class VtStore {
+class VtStore {
   static_assert(std::endian::native == std::endian::little, "PropertyStore supports only architectures using little-endian.");
 public:
   VtStore();
@@ -32,7 +32,7 @@ public:
   /// property doesn't exist a Null value is returned. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::interval<PropertyValue> GetProperty(PropertyId property, const TemporalPeriod& vt) const;
+  utils::valued_timeline<PropertyValue> GetProperty(PropertyId property, const TemporalPeriod& vt) const;
 
   /// Checks whether the property `property` exists in the store in between the TemporalPeriod "vt". The time
   /// complexity of this function is O(n).
@@ -77,13 +77,13 @@ public:
   /// an outgoing edge 'edge' exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::interval<bool> GetOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
+  utils::timeline<bool> GetOutgoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
 
   /// Returns an interval which contains "true" for every vt in between the TemporalPeriod 'vt' so that
   /// an ingoing edge 'edge' exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::interval<bool> GetIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
+  utils::timeline<bool> GetIngoingEdge(EdgeStoreType edge, const TemporalPeriod& vt) const;
 
   /// Checks whether there is an outgoing edge `edge` in the store in between the TemporalPeriod "vt". The time
   /// complexity of this function is O(n).
@@ -139,7 +139,7 @@ public:
   /// this graph object exists in that period. The time complexity of
   /// this function is O(n).
   /// @throw std::bad_alloc
-  utils::interval<bool> GetObjectValidity(const TemporalPeriod& vt) const;
+  utils::timeline<bool> GetObjectValidity(const TemporalPeriod& vt) const;
 
   /// Mark the object as valid and existing in a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
   /// returned if even partial assignment took place. The time complexity of this function is
@@ -159,11 +159,52 @@ public:
   /// @throw std::bad_alloc
   bool DeleteObject();
 
+  //// Returns an interval which contains "true" for every vt in between the TemporalPeriod 'vt' so that
+  /// the label "label" exists in that period. The time complexity of
+  /// this function is O(n).
+  /// @throw std::bad_alloc
+  utils::timeline<bool> GetLabel(LabelId label, const TemporalPeriod& vt) const;
+
+  /// Checks whether the label "label" exists in the store in between the TemporalPeriod "vt". The time
+  /// complexity of this function is O(n).
+  bool HasLabel(LabelId label, const TemporalPeriod& vt) const;
+
+  /// Checks whether the label `label` exists in the store at all. The time
+  /// complexity of this function is O(n).
+  bool HasLabel(LabelId label) const;
+
+  /// Returns all label ids currently stored in the store. The time complexity
+  /// of this function is O(n).
+  /// @throw std::bad_alloc
+  std::vector<LabelId> Labels() const;
+
+  /// Set a label a TemporalPeriod "vt" and return `true` if insertion took place. `false` is
+  /// returned if even partial assignment took place. The time complexity of this function is
+  /// O(n).
+  /// @throw std::bad_alloc
+  bool SetLabel(LabelId label, const TemporalPeriod& vt);
+
+  /// Remove the label and return `true` if any removal took place.
+  /// `false` is returned if there were no timespan to remove. The time
+  /// complexity of this function is O(1).
+  /// @throw std::bad_alloc
+  bool DeleteLabel(LabelId label);
+
+  /// Remove the labels in a time span 'vt' and return `true` if any removal took place.
+  /// `false` is returned if there were no properties to remove. The time
+  /// complexity of this function is O(1).
+  /// @throw std::bad_alloc
+  bool DeleteLabel(LabelId label, const TemporalPeriod& vt);
+
+  using TimelineList = std::vector<TemporalPeriod>;
+  using ValuedTimeline = std::vector<std::pair<TemporalPeriod, PropertyValue>>;
+
 private:
-    std::vector<TemporalPeriod> lifetime_;
-    std::map<EdgeStoreType, std::vector<TemporalPeriod>> ingoing_edges_;
-    std::map<EdgeStoreType, std::vector<TemporalPeriod>> outgoing_edges_;
-    std::map<PropertyId, std::vector<std::pair<TemporalPeriod, PropertyValue>>> properties_;
+    TimelineList lifetime_;
+    std::map<LabelId, TimelineList> labels_;
+    std::map<EdgeStoreType, TimelineList> ingoing_edges_;
+    std::map<EdgeStoreType, TimelineList> outgoing_edges_;
+    std::map<PropertyId, ValuedTimeline> properties_;
 };
 
 } // storage
