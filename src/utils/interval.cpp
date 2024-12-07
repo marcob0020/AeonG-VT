@@ -11,7 +11,7 @@ namespace utils {
   std::optional<typename valued_timeline<T>::Iterator> valued_timeline<T>::seek(valued_timeline<T>::Iterator start, VTDateTime vt) {
     auto it = start, prev = start;
     while (it != end()) {
-      VTDateTime& span_start = (+it->timespan().first);
+      VTDateTime& span_start = (it->first.first);
       if (span_start == vt) {
         return it;
       }
@@ -28,7 +28,7 @@ namespace utils {
   std::optional<typename valued_timeline<T>::ConstIterator> valued_timeline<T>::seek(valued_timeline<T>::ConstIterator start, VTDateTime vt) const {
     auto it = start, prev = start;
     while (it != end()) {
-      VTDateTime& span_start = (+it->timespan().first);
+      VTDateTime& span_start = (it->first.first);
       if (span_start == vt) {
         return it;
       }
@@ -70,16 +70,16 @@ namespace utils {
     VTDateTime end_prev = from_to.first;
 
     for (auto it = *it_start; it != *it_end; it++) {
-      if (it->timespan().first > from_to.second)
+      if (it->first.first > from_to.second)
         return false;
 
-      if (end_prev < it->timespan().first)
+      if (end_prev < it->first.first)
         return false;
 
-      if (it->timespan().second >= from_to.second)
+      if (it->first.second >= from_to.second)
         return true;
 
-      end_prev = it->timespan().second;
+      end_prev = it->first.second;
     }
 
     return false;
@@ -93,8 +93,8 @@ namespace utils {
     if (it == std::nullopt || *it == end())
       return T();
 
-    if (from_to.included(it->timespan()))
-      return it.value();
+    if (from_to.included(it->first))
+      return (*it)->second;
 
     return T();
   }
@@ -106,8 +106,8 @@ namespace utils {
     if (it == std::nullopt || *it == end())
       return T();
 
-    if (it->timespan().first <= from)
-      return it.value();
+    if ((*it)->first.first <= from)
+      return (*it)->second;
 
     return T();
   }
@@ -119,7 +119,7 @@ namespace utils {
     if (it == std::nullopt || *it == end())
       return false;
 
-    if (from_to.included(it->timespan()))
+    if (from_to.included((*it)->first))
       return true;
 
     return false;
@@ -136,13 +136,13 @@ namespace utils {
     auto it_end = seek(*it_start, from_to.second);
 
     for (auto it = *it_start; it != it_end; it++) {
-      if (it->timespan().first > from_to.second)
+      if (it->first.first > from_to.second)
         break;
 
-      auto it_intersect = from_to.intersect(*it->timespan());
+      auto it_intersect = from_to.intersect(it->first);
 
       if (it_intersect.valid())
-        result.add(it_intersect, it->value());
+        result.add(it_intersect, it->second);
     }
 
     return result;
@@ -156,7 +156,7 @@ namespace utils {
     auto it_start = seek(begin(),from_to.first);
 
     for (auto it = *it_start; it != end(); it++) {
-      auto it_intersect = it->timespan().intersect(this->from_to);
+      auto it_intersect = it->first.intersect(this->from_to);
 
       if (it_intersect.valid()) {
         result.remove(it_intersect);
@@ -209,7 +209,7 @@ namespace utils {
     if (it == std::nullopt || *it == end())
       return false;
 
-    if (from_to.included((*it)->timespan()))
+    if (from_to.included(**it))
       return true;
 
     return false;
@@ -221,7 +221,7 @@ namespace utils {
     if (it == std::nullopt || *it == end())
       return false;
 
-    if ((*it)->timespan().first <= from)
+    if ((*it)->first <= from)
       return true;
 
     return false;
@@ -233,7 +233,7 @@ namespace utils {
     if (it == std::nullopt || *it == end())
       return false;
 
-    if (from_to.included((*it)->timespan()))
+    if (from_to.included((**it)))
       return true;
 
     return false;
@@ -250,10 +250,10 @@ namespace utils {
     auto it_end = seek(*it_start, from_to.second);
 
     for (auto it = *it_start; it != it_end; it++) {
-      if (it->timespan().first > from_to.second)
+      if (it->first > from_to.second)
         break;
 
-      auto it_intersect = from_to.intersect(it->timespan());
+      auto it_intersect = from_to.intersect(*it);
 
       if (it_intersect.valid())
         result.add(it_intersect);
@@ -269,7 +269,7 @@ namespace utils {
     auto it_start = seek(begin(),from_to.first);
 
     for (auto it = *it_start; it != end(); it++) {
-      auto it_intersect = it->timespan().intersect(this->from_to);
+      auto it_intersect = it->intersect(this->from_to);
 
       if (it_intersect.valid()) {
         result.remove(it_intersect);
@@ -296,10 +296,10 @@ namespace utils {
   }
 
   std::optional<timeline::Iterator> timeline::seek(
-    typename decltype(_container_interval)::iterator start, VTDateTime vt) {
+    Iterator start, VTDateTime vt) {
     auto it = start, prev = start;
     while (it != end()) {
-      VTDateTime& span_start = it->timespan().first;
+      VTDateTime& span_start = it->first;
       if (span_start == vt) {
         return it;
       }
@@ -315,7 +315,7 @@ namespace utils {
   std::optional<timeline::ConstIterator> timeline::seek (timeline::ConstIterator start, VTDateTime vt) const {
     auto it = start, prev = start;
     while (it != end()) {
-      VTDateTime span_start = it->timespan().first;
+      VTDateTime span_start = it->first;
       if (span_start == vt) {
         return it;
       }

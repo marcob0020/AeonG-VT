@@ -10,41 +10,16 @@
 #include "vt_temporal.hpp"
 
 namespace utils {
-template <typename T>
-class interval_item {
-  utils::TimeSpan _timespan;
-  T _value;
-public:
-  interval_item(utils::TimeSpan timespan, T value): _timespan(timespan), _value(value) {}
-  utils::TimeSpan timespan() const { return _timespan; }
-  utils::TimeSpan& timespan() { return _timespan; }
-  T& value()  { return _value; }
-  T value() const { return _value; }
-};
 
-template<typename T>
-class interval_item<bool> {
-  utils::TimeSpan _timespan;
-public:
-  interval_item(utils::TimeSpan timespan, T value): _timespan(timespan) {}
-  explicit interval_item(utils::TimeSpan timespan): _timespan(timespan) {}
-  utils::TimeSpan timespan() const  { return _timespan; }
-  utils::TimeSpan& timespan()   { return _timespan; }
-  T value() const { return true; }
-};
+class timeline {
 
-  class timeline {
-  private:
-    std::forward_list<interval_item<bool>> _container_interval;
-
-    utils::TimeSpan from_to;
 
   public:
-    using Iterator = std::forward_list<interval_item<bool>>::iterator;
-    using ConstIterator = std::forward_list<interval_item<bool>>::const_iterator;
-    using Item = interval_item<bool>;
-    using Container = std::forward_list<interval_item<bool>>;
+    using Item = TimeSpan;
+    using Container = std::forward_list<Item>;
     using TimeSpan = utils::TimeSpan;
+    using ConstIterator = Container::const_iterator;
+    using Iterator = Container::iterator;
 
     explicit timeline(const Container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
     timeline(): from_to({VTDateTime::min(), VTDateTime::max()}) {}
@@ -76,22 +51,23 @@ public:
   private:
     std::optional<Iterator> seek(Iterator start, VTDateTime vt);
     std::optional<ConstIterator> seek(ConstIterator start, VTDateTime vt) const;
+    Container _container_interval;
+
+    utils::TimeSpan from_to;
 
 };
 
 template <typename T>
 class valued_timeline {
 private:
-  std::forward_list<interval_item<T>> _container_interval;
 
-  utils::TimeSpan from_to;
 
 public:
-  using Iterator = typename decltype(_container_interval)::iterator;
-  using ConstIterator = typename decltype(_container_interval)::const_iterator;
-  using Item = interval_item<T>;
-  using Container = std::forward_list<interval_item<T>>;
+  using Item = std::pair<TimeSpan, T>;
+  using Container = std::forward_list<Item>;
   using TimeSpan = utils::TimeSpan;
+  using Iterator = typename Container::iterator;
+  using ConstIterator = typename Container::const_iterator;
 
   explicit valued_timeline(const Container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
   valued_timeline(): _container_interval(), from_to({VTDateTime::min(), VTDateTime::max()}) {}
@@ -126,6 +102,9 @@ private:
   std::optional<Iterator> seek(typename Iterator start, VTDateTime vt);
   std::optional<ConstIterator> seek(typename ConstIterator start, VTDateTime vt) const;
 
+  Container _container_interval;
+
+  utils::TimeSpan from_to;
 };
 
 
