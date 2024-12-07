@@ -13,6 +13,13 @@ namespace {
 enum class ObjectType : uint8_t { MAP, TEMPORAL_DATA };
 }  // namespace
 
+  static const int k_i_SegmentPrefix = 0;
+  static const int k_i_Gid = 1;
+  static const int k_i_TT_s = 2;
+  static const int k_i_TT_e = 3;
+  static const int k_i_VT_s = 4;
+  static const int k_i_VT_e = 5;
+
 nlohmann::json SerializePropertyValueVector(const std::vector<storage::PropertyValue> &values);
 
 nlohmann::json SerializePropertyValueMap(const std::map<std::string, storage::PropertyValue> &parameters);
@@ -207,19 +214,15 @@ std::string formatVT(const utils::TimeSpan& vt) {
 }
 
 utils::TimeSpan parseFormattedVT(const std::string& formatted_vt) {
-   utils::VTDateTime vt_start = utils::VTDateTime::min();
-   utils::VTDateTime vt_end = utils::VTDateTime::max();
 
    std::vector<std::string> res_split = split(formatted_vt, ':');
 
-   const auto vt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[4]));
-   const auto vt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[5]));
+   const auto vt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_VT_s]));
+   const auto vt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_VT_e]));
 
-   vt_start = utils::VTDateTime(vt_ts);
-   vt_end = utils::VTDateTime(vt_te);
-
-   return {vt_start, vt_end};
+   return {utils::VTDateTime(vt_ts), utils::VTDateTime(vt_te)};
 }
+
 
 std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(std::string res){
     constexpr size_t size64=sizeof(int64_t);
@@ -238,18 +241,18 @@ std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(std
     static_assert(!res_split.empty());
 
     //1.get gid
-    const auto gid_uint = static_cast<uint64_t>(std::stoi(res_split[1]));
+    const auto gid_uint = static_cast<uint64_t>(std::stoi(res_split[k_i_Gid]));
 
    //2.get TT
-   const auto tt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[2]));
-   const auto tt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[3]));
+   const auto tt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_TT_s]));
+   const auto tt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_TT_e]));
 
    //3.get VT
    utils::VTDateTime vt_start = utils::VTDateTime::min();
    utils::VTDateTime vt_end = utils::VTDateTime::max();
    if (res_split.size() == 6) {
-     const auto vt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[4]));
-     const auto vt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[5]));
+     const auto vt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_VT_s]));
+     const auto vt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_VT_e]));
 
      vt_start = utils::VTDateTime(vt_ts);
      vt_end = utils::VTDateTime(vt_te);
@@ -381,7 +384,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(uint64_t c
   while(iter_begin!=iter_end){//1.2. found in VA, filter VD (VE - anchor) segment
     std::string key=iter_begin->first;
     std::vector<std::string> parts = split(key, ':');
-    if(parts[1] != std::to_string(gid)){
+    if(parts[k_i_Gid] != std::to_string(gid)){
       ++iter_begin;
       break;
     }
@@ -450,7 +453,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetEdgeInfo(storage::G
   while(iter_begin!=iter_end){//1.2. found in VA, filter VD (VE - anchor) segment
     std::string key=iter_begin->first;
     std::vector<std::string> parts = split(key, ':');
-    if(parts[1] != gid_str){
+    if(parts[k_i_Gid] != gid_str){
       ++iter_begin;
       break;
     }
@@ -535,7 +538,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
     if(iter_begin!=iter_end){//1.2. Found in VA, filter VD data segment
         std::string key=iter_begin->first;
         std::vector<std::string> parts = split(key, ':');
-        if(parts[1] != std::to_string(vertx_gid)){
+        if(parts[k_i_Gid] != std::to_string(vertx_gid)){
             anchor_flag=false;
         }else{
             anchor_flag=true;
@@ -600,7 +603,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
   if(iter_begin!=iter_end){//1.2. Found in VA, filter VD data segment
       std::string key=iter_begin->first;
       std::vector<std::string> parts = split(key, ':');
-      if(parts[1] != std::to_string(vertx_gid)){
+      if(parts[k_i_Gid] != std::to_string(vertx_gid)){
           anchor_flag=false;
       }else{
           anchor_flag=true;
