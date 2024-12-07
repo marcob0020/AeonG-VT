@@ -59,7 +59,7 @@ namespace utils {
   template<typename T>
   bool valued_timeline<T>::covered(TimeSpan from_to) const {
     auto it_start = seek(begin(), from_to.first);
-    auto it_end = seek(it_start, from_to.second);
+    auto it_end = seek(*it_start, from_to.second);
 
     if (it_start == std::nullopt)
       return false;
@@ -84,6 +84,24 @@ namespace utils {
 
     return false;
 
+  }
+
+  template<typename T>
+  bool valued_timeline<T>::exists_outside(TimeSpan from_to) const {
+    auto it_start = seek(begin(), from_to.first);
+
+    if (it_start == std::nullopt || *it_start == end())
+      return false;
+
+    if ((*it_start) != begin() || (*it_start)->first.first < from_to.first)
+      return true;
+
+    auto it_end = seek(*it_start, from_to.second);
+
+    if ((*it_end)-> first.first <= from_to.second)
+      return (*it_end)->first.second > from_to.second;
+
+    return (*it_end)++ != end();
   }
 
   template<typename T>
@@ -201,6 +219,23 @@ namespace utils {
 
   bool timeline::covered(TimeSpan from_to) const {
     return TimelineCoverage(from_to, _container_interval);
+  }
+
+  bool timeline::exists_outside(TimeSpan from_to) const {
+    auto it_start = seek(begin(), from_to.first);
+
+    if (it_start == std::nullopt || *it_start == end())
+      return false;
+
+    if ((*it_start) != begin() || (*it_start)->first < from_to.first)
+      return true;
+
+    auto it_end = seek(*it_start, from_to.second);
+
+    if ((*it_end)-> first <= from_to.second)
+      return (*it_end)->second > from_to.second;
+
+    return (*it_end)++ != end();
   }
 
   bool timeline::get_single(TimeSpan from_to) const {

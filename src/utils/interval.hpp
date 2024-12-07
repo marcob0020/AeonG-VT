@@ -34,6 +34,7 @@ class timeline {
 
     bool covered() const ;
     bool covered(TimeSpan from_to) const ;
+    bool exists_outside(TimeSpan from_to) const ;
 
     bool get_single(TimeSpan from_to) const ;
     bool get_first(VTDateTime from) const ;
@@ -84,6 +85,7 @@ public:
     return !_container_interval.empty() && _container_interval.front().first <= from_to.first && _container_interval.front().second <= from_to.first;
   }
   bool covered(TimeSpan from_to) const ;
+  bool exists_outside(TimeSpan from_to) const ;
 
   T get_single(TimeSpan from_to) const ;
   T get_first(VTDateTime from) const ;
