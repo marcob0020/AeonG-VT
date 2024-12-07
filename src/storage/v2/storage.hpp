@@ -233,7 +233,8 @@ class Storage final {
     storage::HistoryEdge CreateHistoryEdgeFromKV(const EdgeAccessor &another,nlohmann::json gid_delta_);
     storage::HistoryEdge CreateHistoryEdgeFromKV(storage::HistoryEdge edge_,nlohmann::json gid_delta_);
     Result<std::vector<EdgeAccessor>> Edges(std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> &edges_,const std::vector<EdgeTypeId> &edge_types,storage::Gid gid,bool from,std::optional<storage::Gid> existing_gid);
-    utils::timeline EdgeVt(Vertex* from_vertex, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TemporalFilter& vt);
+
+
 
 
     Gid IdToGid(const uint64_t key);
@@ -442,6 +443,11 @@ class Storage final {
 
     bool ProbeDeltasForDeletion(Vertex* vertex, Delta::Action action, const add_info_t& infos);
     bool ProbeDeltasForDeletion(Edge* vertex, Delta::Action action, const add_info_t& infos);
+
+    using EdgeDeltasTypes = enum {INGOING, OUTGOING, OBJECT};
+
+    utils::timeline EdgeVt(const Vertex* from_vertex, EdgeDeltasTypes type, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TimeSpan& vt);
+    utils::timeline VertexVt(const Vertex* vertex, const utils::TimeSpan& vt);
 
     Storage *storage_;
     std::shared_lock<utils::RWLock> storage_guard_;

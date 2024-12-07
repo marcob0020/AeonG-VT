@@ -609,12 +609,17 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const storag
   auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
   //TODO edges
 
+  auto vt_ts=gid_delta_["VT_TS"].get<int64_t>();
+  auto vt_te=gid_delta_["VT_TE"].get<int64_t>();
+
   auto new_vertex=HistoryVertex(vertex_.gid,tt_ts,tt_te);
   new_vertex.labels=maybe_labels;
   new_vertex.properties=maybe_properties;
 
   new_vertex.in_edges=vertex_.in_edges;
   new_vertex.out_edges=vertex_.out_edges;
+
+  new_vertex.vt = utils::TimeSpan(utils::VTDateTime(vt_ts),utils::VTDateTime(vt_te));
   
   return new_vertex;
 }
@@ -633,6 +638,9 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const Vertex
 
   auto tt_ts=gid_delta_["TT_TS"].get<uint64_t>();
   auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
+
+  auto vt_ts=gid_delta_["VT_TS"].get<int64_t>();
+  auto vt_te=gid_delta_["VT_TE"].get<int64_t>();
   //TODO edges
   auto new_vertex=HistoryVertex(another.vertex_->gid,tt_ts,tt_te);
   new_vertex.labels=maybe_labels;
@@ -641,6 +649,8 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const Vertex
  //边
   new_vertex.in_edges=another.vertex_->in_edges;
   new_vertex.out_edges=another.vertex_->out_edges;
+
+  new_vertex.vt = utils::TimeSpan(utils::VTDateTime(vt_ts),utils::VTDateTime(vt_te));
 
   return new_vertex;
 }
@@ -735,7 +745,7 @@ storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(const EdgeAccess
   maybe_properties[property_id]=property_value;
 
   //VT
-  TimeSpan vt = utils::TimeSpan(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
+  utils::TimeSpan vt = utils::TimeSpan(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
 
   auto property_id2 = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("transaction_te"));
   auto property_value2 = storage::PropertyValue(gid_delta_["TT_TE"].get<int64_t>());
@@ -781,7 +791,7 @@ storage::HistoryEdge Storage::Accessor::CreateHistoryEdgeFromKV(storage::History
   auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
 
   //VT
-  TimeSpan vt = utils::TimeSpan(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
+  utils::TimeSpan vt = utils::TimeSpan(utils::VTDateTime(gid_delta_["VT_TS"].get<int64_t>()), utils::VTDateTime(gid_delta_["VT_TE"].get<int64_t>()));
 
   // std::cout<<"CreateHistoryEdgeFromKV2:"<<tt_ts<<" "<<tt_te<<" "<<edge_.from_gid.AsUint()<<" "<<edge_.to_gid.AsUint()<<"\n";
   //TODO edges
@@ -819,38 +829,88 @@ Result<std::vector<EdgeAccessor>> Storage::Accessor::Edges(std::vector<std::tupl
     return std::move(ret);
 }
 
-utils::timeline EdgeVt(Vertex* from_vertex, bool ingoing, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TemporalFilter& vt) {
-  utils::timeline from_coverage = ingoing? from_vertex->vt_store.GetIngoingEdge(edge_, vt.get_span()) : from_vertex->vt_store.GetOutgoingEdge(edge_, vt.get_span());
-  auto before_delta=from_vertex->delta;
+utils::timeline Storage::Accessor::VertexVt(const Vertex* vertex, const utils::TimeSpan& vt) {
+  utils::timeline coverage(vt);
+
+  coverage = vertex->vt_store.GetObjectValidity(vt);
+
+  auto before_delta= vertex->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::DELETE_OBJECT: {
+        coverage.add(before_delta->vt);
+        break;
+      }
+      case storage::Delta::Action::RECREATE_OBJECT: {
+        coverage.remove(before_delta->vt);
+        break;
+      }
+      default:break;
+    }
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+  }
+  return coverage;
+}
+
+utils::timeline Storage::Accessor::EdgeVt(const Vertex* from_vertex, EdgeDeltasTypes type, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TimeSpan& vt) {
+  utils::timeline coverage(vt);
+  switch (type) {
+    case INGOING:
+      coverage = from_vertex->vt_store.GetIngoingEdge(edge_, vt);
+    break;
+    case OUTGOING:
+      coverage = from_vertex->vt_store.GetOutgoingEdge(edge_, vt);
+    break;
+    case OBJECT:
+      coverage = std::get<2>(edge_).ptr->vt_store.GetObjectValidity(vt);
+    break;
+  }
+
+  auto before_delta= (type==OBJECT ? std::get<2>(edge_).ptr->delta : from_vertex->delta);
   while (before_delta != nullptr){
     bool delta_is_edge=false;
     switch (before_delta->action) {
       case storage::Delta::Action::ADD_OUT_EDGE: {
-        if (ingoing)
+        if (type != OUTGOING)
           continue;
 
-        from_coverage.remove(before_delta->vt);
+        coverage.remove(before_delta->vt);
         break;
       }
       case storage::Delta::Action::REMOVE_OUT_EDGE: {
-        if (ingoing)
+        if (type != OUTGOING)
             continue;
 
-        from_coverage.add(before_delta->vt);
+        coverage.add(before_delta->vt);
         break;
       }
       case storage::Delta::Action::ADD_IN_EDGE: {
-        if(!ingoing)
+        if(type != INGOING)
           continue;
 
-        from_coverage.remove(before_delta->vt);
+        coverage.remove(before_delta->vt);
         break;
       }
       case storage::Delta::Action::REMOVE_IN_EDGE:{
-        if(!ingoing)
+        if(type != INGOING)
           continue;
 
-        from_coverage.add(before_delta->vt);
+        coverage.add(before_delta->vt);
+        break;
+      }
+      case storage::Delta::Action::DELETE_OBJECT: {
+        if(type != OBJECT)
+          continue;
+
+        coverage.add(before_delta->vt);
+        break;
+      }
+      case storage::Delta::Action::RECREATE_OBJECT: {
+        if(type != OBJECT)
+          continue;
+
+        coverage.remove(before_delta->vt);
         break;
       }
       default:break;
@@ -859,7 +919,7 @@ utils::timeline EdgeVt(Vertex* from_vertex, bool ingoing, std::tuple<EdgeTypeId,
 
   }
 
-  return from_coverage;
+  return coverage;
 }
 
 std::optional<VertexAccessor> Storage::Accessor::FindDeleteVertex(Gid gid, View view){
@@ -1084,13 +1144,12 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     }
     break;
   }
-  //hjm end
-  auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vt);
-  vertex_ptr->deleted = true;
 
-  //hjm begin
-  delta->transaction_st=ts;
-  //save vertex to restore
+  utils::timeline vt_range_obj = VertexVt(vertex_ptr,utils::TimeSpan());
+
+  bool deleteVertexFlag = !vt_range_obj.exists_outside(vt);
+
+
   nlohmann::json data = nlohmann::json::object();
   //labels
   std::vector<LabelId> maybe_labels = vertex_ptr->labels;
@@ -1109,7 +1168,22 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     data2[property_name] = property_value;
   }
   data["SP"]=data2;
-  delta->add_info=data;
+
+  vt_range_obj = vt_range_obj.split(vt);
+
+  for (auto& vti : vt_range_obj) {
+    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vti);
+
+    delta->transaction_st=ts;
+    //save vertex to restore
+
+    delta->add_info=data;
+  }
+
+  if (deleteVertexFlag)
+    vertex_ptr->deleted = true;
+
+
   if(prinfFlag){
     auto print=prinfVertex(vertex_ptr->gid.AsUint(),ts,maybe_properties,maybe_labels);
     transaction_.prinfVertex_.emplace_back(print);
@@ -1345,18 +1419,11 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
     break;
   }
 
+  utils::timeline vt_range_obj = VertexVt(vertex_ptr,utils::TimeSpan());
 
-  auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vt);
-
-  if (!vt.whole() && vertex_ptr->has_vt >= 0) {
-    vertex_ptr->has_vt++;
-  }
-
-  vertex_ptr->deleted = true;
+  bool deleteVertexFlag = !vt_range_obj.exists_outside(vt);
 
 
-  delta->transaction_st=ts;
-  //save vertex to restore
   nlohmann::json data = nlohmann::json::object();
   auto maybe_labels = vertex_ptr->labels;
   auto add_labels=std::vector<std::pair<std::string,std::string>>();
@@ -1374,7 +1441,25 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
     data2[property_name] = property_value;
   }
   data["SP"]=data2;
-  delta->add_info=data;
+
+  vt_range_obj = vt_range_obj.split(vt);
+
+  for (auto& vti : vt_range_obj) {
+    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vti);
+
+    delta->transaction_st=ts;
+    //save vertex to restore
+
+    delta->add_info=data;
+  }
+
+  if (deleteVertexFlag)
+    vertex_ptr->deleted = true;
+
+
+  if (!vt.whole() && vertex_ptr->has_vt >= 0) {
+    vertex_ptr->has_vt++;
+  }
 
   if(prinfFlag){
     auto print=prinfVertex(vertex_ptr->gid.AsUint(),ts,maybe_properties,maybe_labels);
@@ -2302,7 +2387,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
 
   auto delete_edge_from_storage = [&edge_type, &edge_ref, this, vt](auto *vertex, auto *edges, const utils::timeline& coverage) {
     std::tuple<EdgeTypeId, Vertex *, EdgeRef> link(edge_type, vertex, edge_ref);
-    if (coverage.covered({vt.first,vt.second}))
+    if (coverage.exists_outside({vt.first,vt.second}))
       return true;
 
     auto it = std::find(edges->begin(), edges->end(), link);
@@ -2321,8 +2406,11 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     return true;
   };
 
-  auto op1 = delete_edge_from_storage(to_vertex, &from_vertex->out_edges, to_coverage);
-  auto op2 = delete_edge_from_storage(from_vertex, &to_vertex->in_edges, from_coverage);
+  utils::timeline vt_range_out = EdgeVt(from_vertex,OUTGOING,std::make_tuple(edge_type, to_vertex, edge_ref),utils::TimeSpan());
+  utils::timeline vt_range_in = EdgeVt(from_vertex, INGOING, std::make_tuple(edge_type, from_vertex, edge_ref), utils::TimeSpan());
+
+  auto op1 = delete_edge_from_storage(to_vertex, &from_vertex->out_edges, vt_range_out);
+  auto op2 = delete_edge_from_storage(from_vertex, &to_vertex->in_edges, vt_range_in);
 
   if (config_.properties_on_edges) {
     MG_ASSERT((op1 && op2), "Invalid database state!");
@@ -2340,20 +2428,9 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     }
   };
 
-  utils::timeline vt_range =
-
   if (config_.properties_on_edges) {
     auto *edge_ptr = edge_ref.ptr;
 
-
-
-    auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, Delta::RecreateObjectTag(), vt);
-    edge_ptr->deleted = true;
-    //hjm begin store edge to reconstruct
-    delta->transaction_st=ts;
-    delta->from_gid=edge_ptr->from_gid;
-    delta->to_gid=edge_ptr->to_gid;
-    //properties
     nlohmann::json data = nlohmann::json::object();
     auto maybe_properties = edge_ptr->properties.Properties();;
     nlohmann::json data2 = nlohmann::json::object();
@@ -2363,7 +2440,25 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
       data2[property_name] = property_value;
     }
     data["SP"]=data2;
-    delta->add_info=data;
+
+    //create deltas for edge object
+    {
+      utils::timeline vt_range_obj = EdgeVt(from_vertex,OBJECT,std::make_tuple(edge_type, to_vertex, edge_ref),vt);
+
+      createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data](utils::TimeSpan vtx) {
+        auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, Delta::RecreateObjectTag(), vtx);
+        edge_ptr->deleted = true;
+        //hjm begin store edge to reconstruct
+        delta->transaction_st=ts;
+        delta->from_gid=edge_ptr->from_gid;
+        delta->to_gid=edge_ptr->to_gid;
+
+        delta->add_info=data;
+      });
+    }
+
+    //properties
+
     if(prinfFlag){
       auto prinfEdges=prinfEdge(edge_type,edge_ptr->gid.AsUint(),edge_ptr->from_gid.AsUint(),edge_ptr->to_gid.AsUint(),ts,maybe_properties);
       transaction_.prinfEdge_.emplace_back(prinfEdges);
@@ -2371,17 +2466,30 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     //hjm end
   }
 
-  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref, vt);
-  //hjm begin
-  delta->transaction_st = from_ts;
-  transaction_.ve_changed.insert(from_vertex->gid);
-  //hjm end
 
-  delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref, vt);
-  //hjm begin
-  delta->transaction_st = to_ts;
-  transaction_.ve_changed.insert(to_vertex->gid);
-  //hjm end
+  //create deltas for outgoing edges
+  {
+    vt_range_out =vt_range_out.split(vt);
+
+    createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this](utils::TimeSpan vtx) {
+      auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref, vtx);
+      //hjm begin
+      delta->transaction_st = from_ts;
+      transaction_.ve_changed.insert(from_vertex->gid);
+    });
+  }
+
+  //create deltas for ingoing edges
+  {
+    vt_range_in = vt_range_in.split(vt);
+
+    createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this](utils::TimeSpan vtx) {
+      auto delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref, vtx);
+      //hjm begin
+      delta->transaction_st = to_ts;
+      transaction_.ve_changed.insert(to_vertex->gid);
+    });
+  }
 
   // Decrement edge count.
   storage_->edge_count_.fetch_add(-1, std::memory_order_acq_rel);
