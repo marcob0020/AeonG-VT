@@ -149,6 +149,24 @@ namespace utils {
   }
 
   template<typename T>
+  timeline valued_timeline<T>::invert() const {
+    timeline result (this->from_to);
+    result.add(this->from_to);
+
+    auto it_start = seek(begin(),from_to.first);
+
+    for (auto it = *it_start; it != end(); it++) {
+      auto it_intersect = it->timespan().intersect(this->from_to);
+
+      if (it_intersect.valid()) {
+        result.remove(it_intersect);
+      }else break;
+    }
+
+    return result;
+  }
+
+  template<typename T>
   typename valued_timeline<T>::ConstIterator valued_timeline<T>::begin() const {
     return _container_interval.begin();
   }
@@ -239,6 +257,23 @@ namespace utils {
 
       if (it_intersect.valid())
         result.add(it_intersect);
+    }
+
+    return result;
+  }
+
+  timeline timeline::invert() const {
+    timeline result (this->from_to);
+    result.add(this->from_to);
+
+    auto it_start = seek(begin(),from_to.first);
+
+    for (auto it = *it_start; it != end(); it++) {
+      auto it_intersect = it->timespan().intersect(this->from_to);
+
+      if (it_intersect.valid()) {
+        result.remove(it_intersect);
+      }else break;
     }
 
     return result;

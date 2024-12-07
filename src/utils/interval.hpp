@@ -33,6 +33,52 @@ public:
   T value() const { return true; }
 };
 
+  class timeline {
+  private:
+    std::forward_list<interval_item<bool>> _container_interval;
+
+    utils::TimeSpan from_to;
+
+  public:
+    using Iterator = std::forward_list<interval_item<bool>>::iterator;
+    using ConstIterator = std::forward_list<interval_item<bool>>::const_iterator;
+    using Item = interval_item<bool>;
+    using Container = std::forward_list<interval_item<bool>>;
+    using TimeSpan = utils::TimeSpan;
+
+    explicit timeline(const Container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
+    timeline(): from_to({VTDateTime::min(), VTDateTime::max()}) {}
+    timeline(const TimeSpan& interval) : from_to(interval) {}
+
+
+    timeline(const timeline& other): _container_interval(other._container_interval), from_to(other.from_to) {}
+    timeline(timeline&& other) noexcept: _container_interval(std::move(other._container_interval)), from_to(other.from_to) {}
+
+    void add(TimeSpan from_to);
+    void remove(TimeSpan from_to);
+
+    bool covered() const ;
+    bool covered(TimeSpan from_to) const ;
+
+    bool get_single(TimeSpan from_to) const ;
+    bool get_first(VTDateTime from) const ;
+    bool is_single(TimeSpan from_to) const ;
+
+    timeline split(TimeSpan from_to) const;
+    timeline invert() const;
+
+    Iterator begin();
+    Iterator end();
+
+    ConstIterator begin() const ;
+    ConstIterator end() const ;
+
+  private:
+    std::optional<Iterator> seek(Iterator start, VTDateTime vt);
+    std::optional<ConstIterator> seek(ConstIterator start, VTDateTime vt) const;
+
+};
+
 template <typename T>
 class valued_timeline {
 private:
@@ -56,23 +102,19 @@ public:
   valued_timeline(valued_timeline&& other) noexcept: _container_interval(std::move(other._container_interval)), from_to(other.from_to) {}
 
   void add(TimeSpan from_to, const T& value);
-
   void remove(TimeSpan from_to);
 
   bool covered() const {
     return !_container_interval.empty() && _container_interval.front().first <= from_to.first && _container_interval.front().second <= from_to.first;
   }
-
   bool covered(TimeSpan from_to) const ;
 
   T get_single(TimeSpan from_to) const ;
-
   T get_first(VTDateTime from) const ;
-
   bool is_single(TimeSpan from_to) const ;
 
   valued_timeline split(TimeSpan from_to) const;
-
+  timeline invert() const;
 
   ConstIterator begin() const;
   ConstIterator end() const;
@@ -87,55 +129,7 @@ private:
 };
 
 
-class timeline {
-  private:
-    std::forward_list<interval_item<bool>> _container_interval;
 
-    utils::TimeSpan from_to;
-
-  public:
-    using Iterator = std::forward_list<interval_item<bool>>::iterator;
-    using ConstIterator = std::forward_list<interval_item<bool>>::const_iterator;
-    using Item = interval_item<bool>;
-    using Container = std::forward_list<interval_item<bool>>;
-    using TimeSpan = utils::TimeSpan;
-
-    explicit timeline(const Container& container_interval) : _container_interval(container_interval), from_to({VTDateTime::min(), VTDateTime::max()}) {}
-    timeline(): from_to({VTDateTime::min(), VTDateTime::max()}) {}
-    timeline(const TimeSpan& interval) : from_to(interval) {}
-
-
-    timeline(const timeline& other): _container_interval(other._container_interval), from_to(other.from_to) {}
-    timeline(timeline&& other) noexcept: _container_interval(std::move(other._container_interval)), from_to(other.from_to) {}
-
-    void add(TimeSpan from_to);
-
-    void remove(TimeSpan from_to);
-
-    bool covered() const ;
-
-    bool covered(TimeSpan from_to) const ;
-
-    bool get_single(TimeSpan from_to) const ;
-
-    bool get_first(VTDateTime from) const ;
-
-    bool is_single(TimeSpan from_to) const ;
-
-    timeline split(TimeSpan from_to) const;
-
-
-    Iterator begin();
-    Iterator end();
-
-    ConstIterator begin() const ;
-    ConstIterator end() const ;
-
-  private:
-    std::optional<Iterator> seek(Iterator start, VTDateTime vt);
-    std::optional<ConstIterator> seek(ConstIterator start, VTDateTime vt) const;
-
-  };
 
 }
 
