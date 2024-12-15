@@ -39,6 +39,7 @@ class timeline {
     bool get_single(TimeSpan from_to) const ;
     bool get_first(VTDateTime from) const ;
     bool is_single(TimeSpan from_to) const ;
+    bool has_any();
 
     timeline split(TimeSpan from_to) const;
     timeline invert() const;
@@ -48,6 +49,7 @@ class timeline {
 
     ConstIterator begin() const ;
     ConstIterator end() const ;
+
 
   private:
     std::optional<Iterator> seek(Iterator start, VTDateTime vt);
@@ -80,6 +82,7 @@ public:
 
   void add(TimeSpan from_to, const T& value);
   void remove(TimeSpan from_to);
+  void fill_voids(TimeSpan from_to, const T& value);
 
   bool covered() const {
     return !_container_interval.empty() && _container_interval.front().first <= from_to.first && _container_interval.front().second <= from_to.first;
@@ -90,6 +93,7 @@ public:
   T get_single(TimeSpan from_to) const ;
   T get_first(VTDateTime from) const ;
   bool is_single(TimeSpan from_to) const ;
+  bool has_any();
 
   valued_timeline split(TimeSpan from_to) const;
   timeline invert() const;

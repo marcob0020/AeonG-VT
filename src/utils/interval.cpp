@@ -57,6 +57,15 @@ namespace utils {
   }
 
   template<typename T>
+  void valued_timeline<T>::fill_voids(TimeSpan from_to, const T &value) {
+    valued_timeline<T> inverse = this->split(from_to)->invert();
+
+    for (auto it = inverse.begin(); it != inverse.end(); ++it) {
+      _container_interval.emplace_front({it->first, value});
+    }
+  }
+
+  template<typename T>
   bool valued_timeline<T>::covered(TimeSpan from_to) const {
     auto it_start = seek(begin(), from_to.first);
     auto it_end = seek(*it_start, from_to.second);
@@ -141,6 +150,11 @@ namespace utils {
       return true;
 
     return false;
+  }
+
+  template<typename T>
+  bool valued_timeline<T>::has_any() {
+    return !_container_interval.empty();
   }
 
   template<typename T>
@@ -328,6 +342,10 @@ namespace utils {
 
   timeline::ConstIterator timeline::end() const {
     return _container_interval.end();
+  }
+
+  bool timeline::has_any() {
+    return !_container_interval.empty();
   }
 
   std::optional<timeline::Iterator> timeline::seek(
