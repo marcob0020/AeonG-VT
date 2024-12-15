@@ -206,6 +206,10 @@ class VertexAccessor final {
   // All the write operations, and operators used for traversal (e.g. InEdges) will still
   // return an error if it's called for a deleted vertex.
   bool for_deleted_{false};
+
+  utils::valued_timeline<storage::PropertyValue> PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan& vt) const;
+
+  utils::timeline LabelTimeline(storage::LabelId label_id, const utils::TimeSpan& vt) const;
 };
 
 }  // namespace storage

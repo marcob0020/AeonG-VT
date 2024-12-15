@@ -21,6 +21,28 @@
 
 namespace storage {
 
+utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan &vt) {
+  utils::valued_timeline<storage::PropertyValue> coverage(vt);
+
+  coverage = edge_.ptr->vt_store.GetProperty(property_id, vt);
+
+  auto before_delta= edge_.ptr->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::SET_PROPERTY: {
+        if (before_delta->property.key != property_id)
+          continue;
+        coverage.add(before_delta->vt, before_delta->property.value);
+        break;
+      }
+      default:break;
+    }
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+  }
+  return coverage;
+}
+
 bool EdgeAccessor::HasTemporalFeatures() const {
   return edge_.ptr->has_vt;
 }
@@ -160,7 +182,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
         std::cout<<"SERIALIZATION_ERROR"<<ts<<" "<<transaction_->transaction_id<<"\n";
         return Error::SERIALIZATION_ERROR;
       }
-    }else{//前一个delta提交了 全量提交
+    }else{//The previous delta was submitted and the full amount(?) was submitted.
       // std::cout<<"edge commit:"<<ts<<" "<<edge_.ptr->num<<"\n";
       edge_.ptr->num+=1;
       if(edge_.ptr->num>config_.AnchorNum){
@@ -225,7 +247,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
         std::cout<<"SERIALIZATION_ERROR"<<ts<<" "<<transaction_->transaction_id<<"\n";
         return Error::SERIALIZATION_ERROR;
       }
-    }else{//前一个delta提交了 全量提交
+    }else{//The previous delta was submitted and the full amount(?) was submitted.
       // std::cout<<"edge commit:"<<ts<<" "<<edge_.ptr->num<<"\n";
       edge_.ptr->num+=1;
       if(edge_.ptr->num>config_.AnchorNum){
@@ -258,12 +280,19 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   // current code always follows the logical pattern of "create a delta" and
   // "modify in-place". Additionally, the created delta will make other
   // transactions get a SERIALIZATION_ERROR.
-  auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), vt, property, current_value);
-  //hjm begin
-  delta->from_gid=edge_.ptr->from_gid;
-  delta->to_gid=edge_.ptr->to_gid;
-  delta->transaction_st = ts;//edge_.ptr->transaction_st;
-  //hjm end
+
+  utils::timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt);
+
+  for (auto& vti : vt_range_prop) {
+    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), vti->first, property, vti->second);
+    //hjm begin
+    delta->from_gid=edge_.ptr->from_gid;
+    delta->to_gid=edge_.ptr->to_gid;
+    delta->transaction_st = ts;//edge_.ptr->transaction_st;
+    //hjm end
+  }
+
+
 
   if (!vt.whole() && edge_.ptr->has_vt >= 0) {
     edge_.ptr->has_vt++;
@@ -382,12 +411,24 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
   //hjm end
 
   auto properties = edge_.ptr->properties.Properties();
+  bool all_delete = true;
+
   for (const auto &property : properties) {
-    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), vt, property.first, property.second);
-    //hjm begin
-    delta->from_gid=edge_.ptr->from_gid;
-    delta->to_gid=edge_.ptr->to_gid;
-    delta->transaction_st = ts;
+    utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property.first, utils::TimeSpan());
+
+    all_delete &= vt_range_prop.exists_outside(vt);
+
+    vt_range_prop = vt_range_prop.split(vt);
+
+    for (const auto& vti: vt_range_prop) {
+      auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), vti.second, property.first, vti.second);
+      //hjm begin
+      delta->from_gid=edge_.ptr->from_gid;
+      delta->to_gid=edge_.ptr->to_gid;
+      delta->transaction_st = ts;
+    }
+
+
     //hjm end
   }
 
@@ -395,7 +436,8 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
     edge_.ptr->has_vt++;
   }
 
-  edge_.ptr->properties.ClearProperties();
+  if (all_delete)
+    edge_.ptr->properties.ClearProperties();
 
   return std::move(properties);
 }

@@ -306,12 +306,19 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
     transaction_->prinfVertex_.emplace_back(print);
   }
 
-  //TODO it should not return false if it exists in a different vt?
-  if (std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end()) return false;
+  utils::timeline vt_range_label = LabelTimeline(label, vt).invert();
 
-  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::RemoveLabelTag(), label, vt);
+  if (!vt_range_label.has_any())
+    return false;
 
-  vertex_->labels.push_back(label);
+  for (auto& vti: vt_range_label) {
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::RemoveLabelTag(), label, vt);
+    delta->transaction_st = ts;
+  }
+
+
+  if (std::find(vertex_->labels.begin(), vertex_->labels.end(), label) == vertex_->labels.end())
+    vertex_->labels.push_back(label);
 
   if (!vt.whole() && vertex_->has_vt >= 0) {
     vertex_->has_vt++;
@@ -319,7 +326,7 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
 
   //set for aeong time
   transaction_->v_changed.insert(vertex_->gid);
-  delta->transaction_st = ts;
+
 
   UpdateOnAddLabel(indices_, label, vertex_, *transaction_);
 
@@ -453,23 +460,35 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label, const utils::TimeSpan& v
     transaction_->prinfVertex_.emplace_back(print);
   }
 
-  //TODO check if ok even if delete does not cover the whole lifetime
-  auto it = std::find(vertex_->labels.begin(), vertex_->labels.end(), label);
-  if (it == vertex_->labels.end()) return false;
+  utils::timeline vt_range_label = LabelTimeline(label, utils::TimeSpan());
+  bool vt_exists_outside_label = false;
 
-  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::AddLabelTag(), label, vt);
+  if (vt_range_label.exists_outside(vt))
+    vt_exists_outside_label = true;
+
+  if (!vt_range_label.has_any())
+    return false;
+
+  vt_range_label = vt_range_label.split(vt);
+
+  for (auto vti: vt_range_label) {
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::AddLabelTag(), label, vti);
+    delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
+  }
 
   //aeong set for transaction
   transaction_->v_changed.insert(vertex_->gid);
-  delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
 
   if (!vt.whole() && vertex_->has_vt >= 0) {
     vertex_->has_vt++;
   }
 
-  //TODO check if ok even if delete does not cover the whole lifetime
-  std::swap(*it, *vertex_->labels.rbegin());
-  vertex_->labels.pop_back();
+  if (vt_exists_outside_label) {
+    auto it = std::find(vertex_->labels.begin(), vertex_->labels.end(), label);
+    std::swap(*it, *vertex_->labels.rbegin());
+    vertex_->labels.pop_back();
+  }
+
   return true;
 }
 
@@ -532,28 +551,29 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const utils::Tem
     has_label = std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end();
     delta = vertex_->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &has_label, label](const Delta &delta, utils::TimeSpan vt_intersect) {
+  utils::timeline vt_range_label = vertex_->vt_store.GetLabel(label,  vt.get_span());
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &has_label, label, &vt_range_label, &vt_range_obj](const Delta &delta, utils::TimeSpan vt_intersect) {
     switch (delta.action) {
       case Delta::Action::REMOVE_LABEL: {
         if (delta.label == label) {
-          MG_ASSERT(has_label, "Invalid database state!");
-          has_label = false;
+          vt_range_label.remove(vt_intersect);
         }
         break;
       }
       case Delta::Action::ADD_LABEL: {
         if (delta.label == label) {
-          MG_ASSERT(!has_label, "Invalid database state!");
-          has_label = true;
+          vt_range_label.add(vt_intersect);
         }
         break;
       }
       case Delta::Action::DELETE_OBJECT: {
-        exists = false;
+        vt_range_obj.remove(vt_intersect);
         break;
       }
       case Delta::Action::RECREATE_OBJECT: {
-        deleted = false;
+        vt_range_obj.add(vt_intersect);
         break;
       }
       case Delta::Action::SET_PROPERTY:
@@ -564,6 +584,10 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const utils::Tem
         break;
     }
   });
+
+  exists = vt_range_obj.has_any();
+  has_label = vt_range_label.has_any();
+
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
   return has_label;
@@ -629,29 +653,41 @@ Result<std::vector<LabelId>> VertexAccessor::Labels(View view, const utils::Temp
     labels = vertex_->labels;
     delta = vertex_->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt,  [&exists, &deleted, &labels](const Delta &delta) {
+
+  std::map<LabelId, utils::timeline> vt_labels;
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+
+  for (auto& label : vertex_->vt_store.Labels()) {
+    vt_labels.insert({label, vertex_->vt_store.GetLabel(label, vt.get_span())});
+  }
+
+  ApplyDeltasForRead(transaction_, delta, view, vt,  [&vt_range_obj, &deleted, &vt_labels](const Delta &delta, utils::TimeSpan vt_intersect) {
     switch (delta.action) {
       case Delta::Action::REMOVE_LABEL: {
-        // Remove the label because we don't see the addition.
-        auto it = std::find(labels.begin(), labels.end(), delta.label);
-        MG_ASSERT(it != labels.end(), "Invalid database state!");
-        std::swap(*it, *labels.rbegin());
-        labels.pop_back();
+        vt_labels[delta.label].remove(vt_intersect);
+
+        // // Remove the label because we don't see the addition.
+        // auto it = std::find(labels.begin(), labels.end(), delta.label);
+        // MG_ASSERT(it != labels.end(), "Invalid database state!");
+        // std::swap(*it, *labels.rbegin());
+        // labels.pop_back();
         break;
       }
       case Delta::Action::ADD_LABEL: {
+        vt_labels[delta.label].add(vt_intersect);
+
         // Add the label because we don't see the removal.
-        auto it = std::find(labels.begin(), labels.end(), delta.label);
-        MG_ASSERT(it == labels.end(), "Invalid database state!");
-        labels.push_back(delta.label);
+        // auto it = std::find(labels.begin(), labels.end(), delta.label);
+        // MG_ASSERT(it == labels.end(), "Invalid database state!");
+        // labels.push_back(delta.label);
         break;
       }
       case Delta::Action::DELETE_OBJECT: {
-        exists = false;
+        vt_range_obj.remove(vt_intersect);
         break;
       }
       case Delta::Action::RECREATE_OBJECT: {
-        deleted = false;
+        vt_range_obj.add(vt_intersect);
         break;
       }
       case Delta::Action::SET_PROPERTY:
@@ -662,6 +698,20 @@ Result<std::vector<LabelId>> VertexAccessor::Labels(View view, const utils::Temp
         break;
     }
   });
+
+  exists = vt_range_obj.has_any();
+  deleted = !vt_range_obj.has_any();
+
+  for (auto& label : labels) {
+    if (!vt_labels.contains(label) || !vt_labels[label].has_any()) {
+      // Remove the label because we don't see it in any vt
+      auto it = std::find(labels.begin(), labels.end(), label);
+      MG_ASSERT(it != labels.end(), "Invalid database state!");
+      std::swap(*it, *labels.rbegin());
+      labels.pop_back();
+    }
+  }
+
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
   return std::move(labels);
@@ -805,14 +855,25 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
     transaction_->prinfVertex_.emplace_back(print);
   }
 
-  auto current_value = vertex_->properties.GetProperty(property);
-  // We could skip setting the value if the previous one is the same to the new
-  // one. This would save some memory as a delta would not be created as well as
-  // avoid copying the value. The reason we are not doing that is because the
-  // current code always follows the logical pattern of "create a delta" and
-  // "modify in-place". Additionally, the created delta will make other
-  // transactions get a SERIALIZATION_ERROR.
-  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vt, property, current_value);
+  utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt);
+  vt_range_prop.fill_voids(vt,PropertyValue());
+
+  auto current_value_x = PropertyValue();
+
+  for (auto& vti: vt_range_prop) {
+    auto current_value = vti.second;
+    // We could skip setting the value if the previous one is the same to the new
+    // one. This would save some memory as a delta would not be created as well as
+    // avoid copying the value. The reason we are not doing that is because the
+    // current code always follows the logical pattern of "create a delta" and
+    // "modify in-place". Additionally, the created delta will make other
+    // transactions get a SERIALIZATION_ERROR.
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vti.first, property, current_value);
+    delta->transaction_st = vertex_->transaction_st;//ts;
+
+    if (!current_value.IsNull())
+      current_value_x = current_value;
+  }
 
   if (!vt.whole() && vertex_->has_vt >= 0) {
     vertex_->has_vt++;
@@ -823,12 +884,11 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
 
   //aeong set for transaction
   transaction_->v_changed.insert(vertex_->gid);
-  delta->transaction_st = vertex_->transaction_st;//ts;
 
   //TODO may break indices...
   UpdateOnSetProperty(indices_, property, value, vertex_, *transaction_);
 
-  return std::move(current_value);
+  return std::move(current_value_x);
 }
 
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties() {
@@ -960,12 +1020,49 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
   }
 
   //TODO this won't work. I need to replace Properties with an interval, at least
-  auto properties = vertex_->properties.Properties();
-  for (const auto &property : properties) {
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property.first, property.second);
-    //set for aeong
-    delta->transaction_st = ts;
-    UpdateOnSetProperty(indices_, property.first, PropertyValue(), vertex_, *transaction_);
+  // auto properties = vertex_->properties.Properties();
+  // for (const auto &property : properties) {
+  //   auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property.first, property.second);
+  //   //set for aeong
+  //   delta->transaction_st = ts;
+  //   UpdateOnSetProperty(indices_, property.first, PropertyValue(), vertex_, *transaction_);
+  // }
+
+  std::map<PropertyId, std::pair<utils::valued_timeline<PropertyValue>,bool>> properties;
+  std::map<PropertyId, PropertyValue> properties_old;
+
+  for (auto& property : vertex_->properties) {
+    utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property.first, utils::TimeSpan());
+    bool exists_outside = vt_range_prop.exists_outside(vt);
+    vt_range_prop = vt_range_prop.split(vt);
+    vt_range_prop.fill_voids(vt, PropertyValue());
+
+    properties.emplace(std::make_pair(property.first, std::make_pair(vt_range_prop,exists_outside)));
+  }
+
+
+  for (auto& prop: properties) {
+    auto current_value_x = PropertyValue();
+
+    for (auto& vti: prop.second.first) {
+      auto current_value = vti.second;
+      // We could skip setting the value if the previous one is the same to the new
+      // one. This would save some memory as a delta would not be created as well as
+      // avoid copying the value. The reason we are not doing that is because the
+      // current code always follows the logical pattern of "create a delta" and
+      // "modify in-place". Additionally, the created delta will make other
+      // transactions get a SERIALIZATION_ERROR.
+      auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vti.first, prop.first, current_value);
+      delta->transaction_st = vertex_->transaction_st;//ts;
+
+      if (!current_value.IsNull())
+        current_value_x = current_value;
+    }
+
+    properties_old.emplace(prop.first, current_value_x);
+
+    if (!prop.second.second) //exists_outside flag
+      vertex_->properties.SetProperty(prop.first, PropertyValue());
   }
 
   //set for aeong
@@ -975,9 +1072,10 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
     vertex_->has_vt++;
   }
 
-  vertex_->properties.ClearProperties();
+  if (vt.whole())
+    vertex_->properties.ClearProperties();
 
-  return std::move(properties);
+  return std::move(properties_old);
 }
 
 ##
@@ -1053,7 +1151,8 @@ Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(Proper
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
-  utils::valued_timeline<PropertyValue> res;
+  utils::valued_timeline<PropertyValue> res = vertex_->vt_store.GetProperty(property, vt.get_span());
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
 
   Delta *delta = nullptr;
   {
@@ -1064,7 +1163,7 @@ Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(Proper
   }
 
   //TODO: make sure that the order is correct and that the interval will be correctly formed
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, utils::TimeSpan vt_intersection) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &vt_range_obj, property, &res](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         if (delta.property.key == property) {
@@ -1074,11 +1173,11 @@ Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(Proper
         break;
       }
       case Delta::Action::DELETE_OBJECT: {
-        exists = false;
+        vt_range_obj.remove(vt_intersection);
         break;
       }
       case Delta::Action::RECREATE_OBJECT: {
-        deleted = false;
+        vt_range_obj.add(vt_intersection);
         break;
       }
       case Delta::Action::ADD_LABEL:
@@ -1090,6 +1189,9 @@ Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(Proper
         break;
     }
   });
+  exists = vt_range_obj.has_any();
+  deleted = !exists;
+
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
   return std::move(res);
@@ -1149,37 +1251,50 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
-  std::map<PropertyId, PropertyValue> properties;
+  std::map<PropertyId, PropertyValue> properties_ret;
   Delta *delta = nullptr;
   {
     std::lock_guard<utils::SpinLock> guard(vertex_->lock);
     deleted = vertex_->deleted;
-    properties = vertex_->properties.Properties();
+    properties_ret = vertex_->properties.Properties();
     delta = vertex_->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &properties](const Delta &delta, utils::TimeSpan vt_intersection) {
+
+  std::map<PropertyId, utils::valued_timeline<PropertyValue>> properties;
+
+  for (auto& property : vertex_->vt_store.Properties()) {
+    utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt.get_span());
+
+    properties.emplace(property, vt_range_prop);
+  }
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&vt_range_obj, &deleted, &properties, vt](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         auto it = properties.find(delta.property.key);
         if (it != properties.end()) {
           if (delta.property.value.IsNull()) {
             // remove the property
-            properties.erase(it);
+            properties[delta.property.key].remove(vt_intersection);
           } else {
             // set the value
-            it->second = delta.property.value;
+            properties[delta.property.key].add(vt_intersection, delta.property.value);
           }
         } else if (!delta.property.value.IsNull()) {
-          properties.emplace(delta.property.key, delta.property.value);
+          utils::valued_timeline<PropertyValue> vt_range_prop(vt.get_span());
+          vt_range_prop.add(vt_intersection, delta.property.value);
+
+          properties.emplace(delta.property.key, vt_range_prop);
         }
         break;
       }
       case Delta::Action::DELETE_OBJECT: {
-        exists = false;
+        vt_range_obj.remove(vt_intersection);
         break;
       }
       case Delta::Action::RECREATE_OBJECT: {
-        deleted = false;
+        vt_range_obj.add(vt_intersection);
         break;
       }
       case Delta::Action::ADD_LABEL:
@@ -1191,9 +1306,17 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
         break;
     }
   });
+  exists = vt_range_obj.has_any();
+  deleted = !exists;
+
+  for (auto& property : properties) {
+    if (!property.second.has_any())
+      properties_ret.erase(property.first);
+  }
+
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
-  return std::move(properties);
+  return std::move(properties_ret);
 }
 
 Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const std::vector<EdgeTypeId> &edge_types,
@@ -1597,4 +1720,53 @@ Result<size_t> VertexAccessor::OutDegree(View view) const {
   return degree;
 }
 
+utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(storage::PropertyId property_id,  const utils::TimeSpan &vt) const {
+  utils::valued_timeline<storage::PropertyValue> coverage(vt);
+
+  coverage = vertex_->vt_store.GetProperty(property_id, vt);
+
+  auto before_delta= vertex_->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::SET_PROPERTY: {
+        if (before_delta->property.key != property_id)
+          continue;
+        coverage.add(before_delta->vt, before_delta->property.value);
+        break;
+      }
+      default:break;
+    }
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+  }
+  return coverage;
+}
+
+utils::timeline VertexAccessor::LabelTimeline(storage::LabelId label_id, const utils::TimeSpan &vt) const {
+  utils::timeline coverage(vt);
+
+  coverage = vertex_->vt_store.GetLabel(label_id, vt);
+
+  auto before_delta= vertex_->delta;
+  while (before_delta != nullptr){
+    bool delta_is_edge=false;
+    switch (before_delta->action) {
+      case storage::Delta::Action::ADD_LABEL: {
+        if (before_delta->label != label_id)
+          continue;
+        coverage.remove(before_delta->vt);
+        break;
+      }
+      case storage::Delta::Action::REMOVE_LABEL: {
+        if (before_delta->label != label_id)
+          continue;
+        coverage.add(before_delta->vt);
+        break;
+      }
+      default:break;
+    }
+    before_delta = before_delta->next.load(std::memory_order_acquire);
+  }
+  return coverage;
+}
 }  // namespace storage
