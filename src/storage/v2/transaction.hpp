@@ -70,21 +70,22 @@ struct Transaction {
   Transaction(uint64_t transaction_id, uint64_t start_timestamp, IsolationLevel isolation_level)
       : transaction_id(transaction_id),
         start_timestamp(start_timestamp),
-        command_id(0),
         must_abort(false),
-        isolation_level(isolation_level),
-        transaction_now(utils::CurrentVTDateTime()){
+        transaction_now(utils::CurrentVTDateTime()),
+        command_id(0),
+        isolation_level(isolation_level)
+        {
         }
 
   Transaction(Transaction &&other) noexcept
       : transaction_id(other.transaction_id),
         start_timestamp(other.start_timestamp),
+        must_abort(other.must_abort),
+        transaction_now(other.transaction_now),
         commit_timestamp(std::move(other.commit_timestamp)),
         command_id(other.command_id),
         deltas(std::move(other.deltas)),
-        must_abort(other.must_abort),
-        isolation_level(other.isolation_level),
-        transaction_now(other.transaction_now)
+        isolation_level(other.isolation_level)
         {
           gid_anchor_edge_=other.gid_anchor_edge_;
           gid_anchor_vertex_=other.gid_anchor_vertex_;
@@ -108,6 +109,7 @@ struct Transaction {
   
   uint64_t transaction_id;
   uint64_t start_timestamp;
+  bool must_abort;
   utils::VTDateTime transaction_now;
   // The `Transaction` object is stack allocated, but the `commit_timestamp`
   // must be heap allocated because `Delta`s have a pointer to it, and that
@@ -116,7 +118,6 @@ struct Transaction {
   std::unique_ptr<std::atomic<uint64_t>> commit_timestamp;
   uint64_t command_id;
   std::list<Delta> deltas;
-  bool must_abort;
   IsolationLevel isolation_level;
 
 

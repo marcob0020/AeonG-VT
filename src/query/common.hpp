@@ -107,5 +107,31 @@ storage::PropertyValue PropsSetChecked(T *record, const storage::PropertyId &key
   }
 }
 
+/// Set a property `value` mapped with given `key` on a `record`.
+///
+/// @throw QueryRuntimeException if value cannot be set as a property value
+template <AccessorWithSetProperty T>
+storage::PropertyValue PropsSetChecked(T *record, const storage::PropertyId &key, const TypedValue &value, const utils::TemporalFilter &filter) {
+  try {
+    auto maybe_old_value = record->SetProperty(key, storage::PropertyValue(value), filter.get_span());
+    if (maybe_old_value.HasError()) {
+      switch (maybe_old_value.GetError()) {
+        case storage::Error::SERIALIZATION_ERROR:
+          throw TransactionSerializationException();
+        case storage::Error::DELETED_OBJECT:
+          throw QueryRuntimeException("Trying to set properties on a deleted object.");
+        case storage::Error::PROPERTIES_DISABLED:
+          throw QueryRuntimeException("Can't set property because properties on edges are disabled.");
+        case storage::Error::VERTEX_HAS_EDGES:
+        case storage::Error::NONEXISTENT_OBJECT:
+          throw QueryRuntimeException("Unexpected error when setting a property.");
+      }
+    }
+    return std::move(*maybe_old_value);
+  } catch (const TypedValueException &) {
+    throw QueryRuntimeException("'{}' cannot be used as a property value.", value.type());
+  }
+}
+
 int64_t QueryTimestamp();
 }  // namespace query

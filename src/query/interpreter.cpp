@@ -1165,6 +1165,16 @@ PreparedQuery PrepareCypherQuery(ParsedQuery parsed_query, std::map<std::string,
         interpreter_context->vt = tf;
       }
       break;
+      case utils::TemporalQueryType::BETWEEN_AND: {
+        auto from_vt = EvaluateTemporalValue(&evaluator,std::get<0>(vt_exprs.value()));
+        auto to_vt = EvaluateTemporalValue(&evaluator,std::get<1>(vt_exprs.value()));
+        utils::TemporalFilter tf;
+        tf.type = utils::TemporalQueryType::BETWEEN_AND;
+        tf.first = from_vt.value();
+        tf.second = to_vt.value();
+        interpreter_context->vt = tf;
+      }
+      break;
     }
   }else {
     interpreter_context->vt = utils::TemporalFilter();

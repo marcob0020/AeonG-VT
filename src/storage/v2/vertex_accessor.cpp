@@ -70,7 +70,7 @@ std::pair<bool, bool> IsVisible(Vertex *vertex, Transaction *transaction, View v
     deleted = vertex->deleted;
     delta = vertex->delta;
   }
-  ApplyDeltasForRead(transaction, delta, view, vt, [&](const Delta &delta, utils::TimeSpan& vt_intersect) {
+  ApplyDeltasForRead(transaction, delta, view, vt, [&](const Delta &delta, const utils::TimeSpan& vt_intersect) {
     switch (delta.action) {
       case Delta::Action::ADD_LABEL:
       case Delta::Action::REMOVE_LABEL:
@@ -311,8 +311,8 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
   if (!vt_range_label.has_any())
     return false;
 
-  for (auto& vti: vt_range_label) {
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::RemoveLabelTag(), label, vt);
+  for (const auto& vti: vt_range_label) {
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, Delta::RemoveLabelTag(), label);
     delta->transaction_st = ts;
   }
 
@@ -471,8 +471,8 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label, const utils::TimeSpan& v
 
   vt_range_label = vt_range_label.split(vt);
 
-  for (auto vti: vt_range_label) {
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::AddLabelTag(), label, vti);
+  for (const auto vti: vt_range_label) {
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, Delta::AddLabelTag(), label);
     delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
   }
 
@@ -860,7 +860,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
 
   auto current_value_x = PropertyValue();
 
-  for (auto& vti: vt_range_prop) {
+  for (const auto& vti: vt_range_prop) {
     auto current_value = vti.second;
     // We could skip setting the value if the previous one is the same to the new
     // one. This would save some memory as a delta would not be created as well as
@@ -868,7 +868,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
     // current code always follows the logical pattern of "create a delta" and
     // "modify in-place". Additionally, the created delta will make other
     // transactions get a SERIALIZATION_ERROR.
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vti.first, property, current_value);
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, Delta::SetPropertyTag(), property, current_value);
     delta->transaction_st = vertex_->transaction_st;//ts;
 
     if (!current_value.IsNull())
@@ -1031,20 +1031,20 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
   std::map<PropertyId, std::pair<utils::valued_timeline<PropertyValue>,bool>> properties;
   std::map<PropertyId, PropertyValue> properties_old;
 
-  for (auto& property : vertex_->properties) {
+  for (auto& property : vertex_->properties.Properties()) {
     utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property.first, utils::TimeSpan());
     bool exists_outside = vt_range_prop.exists_outside(vt);
     vt_range_prop = vt_range_prop.split(vt);
     vt_range_prop.fill_voids(vt, PropertyValue());
 
-    properties.emplace(std::make_pair(property.first, std::make_pair(vt_range_prop,exists_outside)));
+    properties.emplace(property.first, std::make_pair(vt_range_prop,exists_outside));
   }
 
 
   for (auto& prop: properties) {
     auto current_value_x = PropertyValue();
 
-    for (auto& vti: prop.second.first) {
+    for (const auto& vti: prop.second.first) {
       auto current_value = vti.second;
       // We could skip setting the value if the previous one is the same to the new
       // one. This would save some memory as a delta would not be created as well as
@@ -1052,7 +1052,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
       // current code always follows the logical pattern of "create a delta" and
       // "modify in-place". Additionally, the created delta will make other
       // transactions get a SERIALIZATION_ERROR.
-      auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), vti.first, prop.first, current_value);
+      auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, Delta::SetPropertyTag(), prop.first, current_value);
       delta->transaction_st = vertex_->transaction_st;//ts;
 
       if (!current_value.IsNull())
@@ -1077,8 +1077,6 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
 
   return std::move(properties_old);
 }
-
-##
 
 Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties2() {
   auto properties = vertex_->properties.Properties();

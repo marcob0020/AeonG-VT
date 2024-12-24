@@ -1171,8 +1171,8 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
 
   vt_range_obj = vt_range_obj.split(vt);
 
-  for (auto& vti : vt_range_obj) {
-    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vti);
+  for (const auto& vti : vt_range_obj) {
+    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, Delta::RecreateObjectTag());
 
     delta->transaction_st=ts;
     //save vertex to restore
@@ -1444,8 +1444,8 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
 
   vt_range_obj = vt_range_obj.split(vt);
 
-  for (auto& vti : vt_range_obj) {
-    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, Delta::RecreateObjectTag(), vti);
+  for (const auto& vti : vt_range_obj) {
+    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, Delta::RecreateObjectTag());
 
     delta->transaction_st=ts;
     //save vertex to restore
@@ -1724,7 +1724,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     }
   }
 
-  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge, vt);
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
 
   if (!vt.whole() && from_vertex->has_vt >= 0) {
     from_vertex->has_vt++;
@@ -1737,7 +1737,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   transaction_.ve_changed.insert(from_vertex->gid);
   //hjm end
 
-  delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge, vt);
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
 
   if (!vt.whole() && to_vertex->has_vt >= 0) {
     to_vertex->has_vt++;
@@ -2028,7 +2028,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     delta->prev.Set(&*it);
   }
 
-  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge, vt);
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
 
   if (!vt.whole() && from_vertex->has_vt >= 0) {
     from_vertex->has_vt++;
@@ -2039,7 +2039,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   delta->transaction_st = from_ts;
   transaction_.ve_changed.insert(from_vertex->gid);
   //hjm end
-  delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge, vt);
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
 
   if (!vt.whole() && to_vertex->has_vt >= 0) {
     to_vertex->has_vt++;
@@ -2445,8 +2445,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     {
       utils::timeline vt_range_obj = EdgeVt(from_vertex,OBJECT,std::make_tuple(edge_type, to_vertex, edge_ref),vt);
 
-      createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data](utils::TimeSpan vtx) {
-        auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, Delta::RecreateObjectTag(), vtx);
+      createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data](const utils::TimeSpan vtx) {
+        auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, vtx, Delta::RecreateObjectTag());
         edge_ptr->deleted = true;
         //hjm begin store edge to reconstruct
         delta->transaction_st=ts;
@@ -2471,8 +2471,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   {
     vt_range_out =vt_range_out.split(vt);
 
-    createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this](utils::TimeSpan vtx) {
-      auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref, vtx);
+    createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
+      auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vtx, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref);
       //hjm begin
       delta->transaction_st = from_ts;
       transaction_.ve_changed.insert(from_vertex->gid);
@@ -2483,8 +2483,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   {
     vt_range_in = vt_range_in.split(vt);
 
-    createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this](utils::TimeSpan vtx) {
-      auto delta=CreateAndLinkDelta(&transaction_, to_vertex, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref, vtx);
+    createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
+      auto delta=CreateAndLinkDelta(&transaction_, to_vertex, vtx, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref);
       //hjm begin
       delta->transaction_st = to_ts;
       transaction_.ve_changed.insert(to_vertex->gid);
@@ -2899,8 +2899,10 @@ void Storage::Accessor::Abort() {
   using obj_t = std::variant<Vertex*, Edge*>;
 
   using vt_checks_set_t = std::tuple<Delta::Action, obj_t, add_info_t>;
+  using add_info_t = std::variant<LabelId,PropertyId,ve_t, std::monostate>;
 
-  std::set<vt_checks_set_t> vt_checks;
+
+  std::set<vt_checks_set_t, SetComparer> vt_checks;
 
   for (const auto &delta : transaction_.deltas) {
     auto prev = delta.prev.Get();
@@ -2929,7 +2931,10 @@ void Storage::Accessor::Abort() {
                 std::swap(*it, *vertex->labels.rbegin());
                 vertex->labels.pop_back();
               }else {
-                auto [set_value, set_inserted]= vt_checks.insert({current->action, vertex,current->label});
+                obj_t object = vertex;
+                add_info_t additional_info = current->label;
+
+                const auto [set_value, set_inserted]= vt_checks.insert(vt_checks_set_t(current->action,  object, additional_info));
                 if (set_inserted) {
                   ProbeDeltasForDeletion(vertex, current->action,current->label);
                 }

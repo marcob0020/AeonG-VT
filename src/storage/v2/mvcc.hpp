@@ -14,6 +14,7 @@
 #include "storage/v2/property_value.hpp"
 #include "storage/v2/transaction.hpp"
 #include "storage/v2/view.hpp"
+#include "utils/temporal_filter.hpp"
 
 namespace storage {
 
@@ -124,7 +125,7 @@ inline void ApplyDeltasForRead(Transaction *transaction, const Delta *delta, Vie
     }
 
     // This delta must be applied, call the callback with the sliced interval.
-    callback(*delta,delta_vt.intersect({vt.first,vt.second}));
+    callback(*delta,delta_vt.intersect(utils::TimeSpan(vt.first,vt.second)));
 
     // Move to the next delta.
     delta = delta->next.load(std::memory_order_acquire);

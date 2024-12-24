@@ -98,7 +98,7 @@ bool EdgeAccessor::IsVisible(const View view, const utils::TemporalFilter& vt) c
     deleted = edge_.ptr->deleted;
     delta = edge_.ptr->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&](const Delta &delta, utils::TimeSpan& vt_intersect) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&](const Delta &delta, const utils::TimeSpan& vt_intersect) {
     switch (delta.action) {
       case Delta::Action::ADD_LABEL:
       case Delta::Action::REMOVE_LABEL:
@@ -281,10 +281,10 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   // "modify in-place". Additionally, the created delta will make other
   // transactions get a SERIALIZATION_ERROR.
 
-  utils::timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt);
+  utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt);
 
-  for (auto& vti : vt_range_prop) {
-    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), vti->first, property, vti->second);
+  for (const auto& vti : vt_range_prop) {
+    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, Delta::SetPropertyTag(), property, vti.second);
     //hjm begin
     delta->from_gid=edge_.ptr->from_gid;
     delta->to_gid=edge_.ptr->to_gid;
@@ -421,7 +421,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
     vt_range_prop = vt_range_prop.split(vt);
 
     for (const auto& vti: vt_range_prop) {
-      auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), vti.second, property.first, vti.second);
+      auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, Delta::SetPropertyTag(), property.first, vti.second);
       //hjm begin
       delta->from_gid=edge_.ptr->from_gid;
       delta->to_gid=edge_.ptr->to_gid;
@@ -499,7 +499,7 @@ Result<utils::valued_timeline<PropertyValue>> EdgeAccessor::GetProperty(Property
     value = edge_.ptr->properties.GetProperty(property);
     delta = edge_.ptr->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, utils::TimeSpan& vt_intersection) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &value, property, &res](const Delta &delta, const utils::TimeSpan& vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         if (delta.property.key == property) {
@@ -592,7 +592,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::Properties(View view) 
     properties = edge_.ptr->properties.Properties();
     delta = edge_.ptr->delta;
   }
-  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &properties](const Delta &delta) {
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &properties](const Delta &delta, const utils::TimeSpan& vt_intersection) {
     switch (delta.action) {
       case Delta::Action::SET_PROPERTY: {
         auto it = properties.find(delta.property.key);

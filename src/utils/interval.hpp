@@ -29,6 +29,18 @@ class timeline {
     timeline(const timeline& other): _container_interval(other._container_interval), from_to(other.from_to) {}
     timeline(timeline&& other) noexcept: _container_interval(std::move(other._container_interval)), from_to(other.from_to) {}
 
+    timeline& operator=(const timeline& other) {
+      _container_interval = other._container_interval;
+      from_to = other.from_to;
+      return *this;
+    }
+
+    timeline& operator=(timeline&& other) noexcept {
+      _container_interval = std::move(other._container_interval);
+      from_to = std::move(other.from_to);
+      return *this;
+    }
+
     void add(TimeSpan from_to);
     void remove(TimeSpan from_to);
 
@@ -80,12 +92,24 @@ public:
   valued_timeline(const valued_timeline& other): _container_interval(other._container_interval), from_to(other.from_to) {}
   valued_timeline(valued_timeline&& other) noexcept: _container_interval(std::move(other._container_interval)), from_to(other.from_to) {}
 
+  valued_timeline& operator=(const valued_timeline& other) {
+    _container_interval = other._container_interval;
+    from_to = other.from_to;
+    return *this;
+  }
+
+  valued_timeline& operator=(valued_timeline&& other) noexcept {
+    _container_interval = std::move(other._container_interval);
+    from_to = std::move(other.from_to);
+    return *this;
+  }
+
   void add(TimeSpan from_to, const T& value);
   void remove(TimeSpan from_to);
   void fill_voids(TimeSpan from_to, const T& value);
 
   bool covered() const {
-    return !_container_interval.empty() && _container_interval.front().first <= from_to.first && _container_interval.front().second <= from_to.first;
+    return !_container_interval.empty() && _container_interval.front().first.first <= from_to.first && _container_interval.front().first.second <= from_to.first;
   }
   bool covered(TimeSpan from_to) const ;
   bool exists_outside(TimeSpan from_to) const ;
@@ -105,8 +129,8 @@ public:
   Iterator end();
 
 private:
-  std::optional<Iterator> seek(typename Iterator start, VTDateTime vt);
-  std::optional<ConstIterator> seek(typename ConstIterator start, VTDateTime vt) const;
+  std::optional<Iterator> seek(Iterator start, VTDateTime vt);
+  std::optional<ConstIterator> seek(ConstIterator start, VTDateTime vt) const;
 
   Container _container_interval;
 

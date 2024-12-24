@@ -80,7 +80,7 @@ struct ExecutionContext {
   std::optional<int64_t> addition;
   std::optional<int64_t> addition_right;
 
-  TemporalFilter addition_vt;
+  utils::TemporalFilter addition_vt;
   // std::map<uint64_t,std::vector<std::tuple<storage::HistoryVertex*,uint64_t,uint64_t>>> all_vertex_;//pair gid,transaction_st vertex info 
   // std::map<int,std::vector<nlohmann::json>> fiter_history_e_datas;
 

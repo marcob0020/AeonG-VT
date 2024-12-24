@@ -41,13 +41,14 @@ nlohmann::json SerializePropertyValue(const storage::PropertyValue &property_val
       return SerializePropertyValueVector(property_value.ValueList());
     case Type::Map:
       return SerializePropertyValueMap(property_value.ValueMap());
-    case Type::TemporalData:
+    case Type::TemporalData: {
       const auto temporal_data = property_value.ValueTemporalData();
       auto data = nlohmann::json::object();
       data.emplace("type", static_cast<uint64_t>(ObjectType::TEMPORAL_DATA));
       data.emplace("value", nlohmann::json::object({{"type", static_cast<uint64_t>(temporal_data.type)},
                                                     {"microseconds", temporal_data.microseconds}}));
       return data;
+    }
     default:
       return {};
   }
@@ -75,9 +76,8 @@ nlohmann::json SerializePropertyValueMap(const std::map<std::string, storage::Pr
   return data;
 };
 
-
 //help functions
- bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,const utils::TemporalQueryType& type){
+bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,const utils::TemporalQueryType& type){
   switch (type) {
     case utils::TemporalQueryType::AS_OF:
       return object_ts<=c_ts & object_te>c_te;
@@ -89,6 +89,7 @@ nlohmann::json SerializePropertyValueMap(const std::map<std::string, storage::Pr
       return false;
   }
 }
+
 
 std::vector<std::string> splits(const std::string &str, const std::string &pattern){
     std::vector<std::string> res;
@@ -224,7 +225,7 @@ utils::TimeSpan parseFormattedVT(const std::string& formatted_vt) {
 }
 
 
-std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(std::string res){
+std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(const std::string& res){
     constexpr size_t size64=sizeof(int64_t);
     const size_t length=res.length();
 
@@ -237,8 +238,6 @@ std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(std
    // 4   VT start
    // 5   VT end
    // count = 6
-
-    static_assert(!res_split.empty());
 
     //1.get gid
     const auto gid_uint = static_cast<uint64_t>(std::stoi(res_split[k_i_Gid]));

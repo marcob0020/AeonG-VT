@@ -34,6 +34,8 @@ struct HistoryContextOnce{
     std::vector<storage::LabelId> remove_labels;
 };
 
+bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,const utils::TemporalQueryType& type);
+
 class HistoryDelta final {
  public:
 

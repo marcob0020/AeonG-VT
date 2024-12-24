@@ -1153,9 +1153,9 @@ int main(int argc, char **argv) {
                      .wal_file_flush_every_n_tx = FLAGS_storage_wal_file_flush_every_n_tx,
                      .snapshot_on_exit = FLAGS_storage_snapshot_on_exit},
       .transaction = {.isolation_level = ParseIsolationLevel()},
-      .rocksdb_retention = {.retention_on_startup = FLAGS_retention_on_startup,
-                            .retention_period=std::chrono::seconds(FLAGS_retention_period_sec),
-                            .retention_interval=std::chrono::seconds(FLAGS_retention_interval_sec)}};
+    .rocksdb_retention = {.retention_on_startup = FLAGS_retention_on_startup,
+                             .retention_interval=std::chrono::seconds(FLAGS_retention_interval_sec),
+                             .retention_period=std::chrono::seconds(FLAGS_retention_period_sec)}};
   if (FLAGS_storage_snapshot_interval_sec == 0) {
     if (FLAGS_storage_wal_enabled) {
       LOG_FATAL(

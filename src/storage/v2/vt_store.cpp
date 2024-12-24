@@ -7,9 +7,13 @@
 #include <utils/temporal_filter.hpp>
 #include <utils/temporal_functions.hpp>
 
+#include "vertex.hpp"
+
 namespace storage {
 
-  VtStore::VtStore() {
+
+
+  VtStore::VtStore(){
     DeleteObject(utils::TimeSpan());
   }
 

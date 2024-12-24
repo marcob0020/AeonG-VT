@@ -7,14 +7,21 @@
 #include <bit>
 #include <utils/interval.hpp>
 
+#include "comparers.hpp"
 #include "edge_ref.hpp"
 #include "id_types.hpp"
 #include "property_value.hpp"
-#include "timespan.hpp"
+#include "utils/timespan.hpp"
 
 namespace storage {
+
   struct Vertex;
 
+  inline auto EdgeStoreType_Compare = [](const std::tuple<EdgeTypeId, Vertex *, EdgeRef> &lhs, const std::tuple<EdgeTypeId, Vertex *, EdgeRef> &rhs) -> int {
+
+    return 0;
+
+  };
 
 class VtStore {
   static_assert(std::endian::native == std::endian::little, "PropertyStore supports only architectures using little-endian.");
@@ -199,13 +206,16 @@ public:
   using TimelineList = std::vector<utils::TimeSpan>;
   using ValuedTimeline = std::vector<std::pair<utils::TimeSpan, PropertyValue>>;
 
+
 private:
     TimelineList lifetime_;
     std::map<LabelId, TimelineList> labels_;
-    std::map<EdgeStoreType, TimelineList> ingoing_edges_;
-    std::map<EdgeStoreType, TimelineList> outgoing_edges_;
+    std::map<EdgeStoreType, TimelineList, EdgeStoreTypeComparer> ingoing_edges_;
+    std::map<EdgeStoreType, TimelineList, EdgeStoreTypeComparer> outgoing_edges_;
     std::map<PropertyId, ValuedTimeline> properties_;
 };
+
+
 
 } // storage
 

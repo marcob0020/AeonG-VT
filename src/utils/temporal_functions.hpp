@@ -12,21 +12,25 @@
 namespace utils {
 
 
-
-  template<typename T>
-  struct is_bool : std::false_type {};
-
-  template<typename T>
-  struct is_bool<bool> : std::true_type {};
-
-  template<typename Container>
-  void CombineIntoVector(const Container& timeline, const Container& v_new, typename Container::iterator itx) {
-    auto it = itx == timeline.end() ? itx : itx + 1;
+  template<typename Item>
+  void CombineIntoVector(std::vector<Item>& timeline, const std::vector<Item>& v_new, typename std::vector<Item>::iterator itx) {
+    // auto it = itx == timeline.end() ? itx : itx + 1;
     timeline.insert(itx, v_new.begin(), v_new.end());
   }
 
-  template<typename Container>
-  void ReplaceIntoVector(const Container& timeline, const Container& v_new,typename Container::iterator delete_start, typename Container::iterator delete_end) {
+  template<typename Item>
+  void CombineIntoVector(std::forward_list<Item>& timeline, const std::vector<Item>& v_new, typename std::forward_list<Item>::iterator itx) {
+    // auto it = itx == timeline.end() ? itx : itx + 1;
+    std::forward_list<Item> tmp;
+    for (auto it = v_new.rbegin(); it != v_new.rend(); it++) {
+      tmp.push_front(*it);
+    }
+
+    timeline.insert_after(itx, tmp.begin(), tmp.end());
+  }
+
+  template<typename Item>
+  void ReplaceIntoVector(std::vector<Item>& timeline, const std::vector<Item>& v_new,typename std::vector<Item>::iterator delete_start, typename std::vector<Item>::iterator delete_end) {
     auto it_begin = timeline.begin();
     auto it_act = delete_start;
 
@@ -39,8 +43,30 @@ namespace utils {
     timeline.insert(it_act, v_new.begin(), v_new.end());
   }
 
-  template<typename Container>
-  void DeleteFromVector(const Container& timeline, typename Container::iterator delete_start, typename Container::iterator delete_end) {
+  template<typename Item>
+  void ReplaceIntoVector(std::forward_list<Item>& timeline, const std::vector<Item>& v_new,typename std::forward_list<Item>::iterator delete_start, typename std::forward_list<Item>::iterator delete_end) {
+    auto it_begin = timeline.begin();
+    auto it_act = delete_start;
+    auto it_prev = timeline.before_begin();
+
+    for (auto it = it_begin; it != it_act; ++it) {
+      it_prev = it;
+    }
+
+    if (it_prev != timeline.end()) {
+      timeline.erase_after(it_prev, std::next(delete_end));
+    }
+
+    std::forward_list<Item> tmp;
+    for (auto it = v_new.rbegin(); it != v_new.rend(); it++) {
+      tmp.push_front(*it);
+    }
+
+    timeline.insert_after(it_prev, tmp.begin(), tmp.end());
+  }
+
+  template<typename Item>
+  void DeleteFromVector(std::vector<Item>& timeline, typename std::vector<Item>::iterator delete_start, typename std::vector<Item>::iterator delete_end) {
     auto it_act = delete_start;
 
     if (it_act != timeline.end()) {
@@ -48,8 +74,38 @@ namespace utils {
     }
   }
 
+  template<typename Item>
+  void DeleteFromVector(std::forward_list<Item>& timeline, typename std::forward_list<Item>::iterator delete_start, typename std::forward_list<Item>::iterator delete_end) {
+    auto it_act = delete_start;
+    auto it_prev = timeline.before_begin();
+
+    for (auto it = timeline.begin(); it != it_act; ++it) {
+      it_prev = it;
+    }
+
+    if (it_prev != timeline.end()) {
+      timeline.erase_after(it_prev, std::next(delete_end));
+    }
+
+  }
+
+  template<typename Item>
+  void InsertIntoVector(std::vector<Item>& timeline, const Item& item) {
+    timeline.push_back(item);
+  }
+
+  template<typename Item>
+  void InsertIntoVector(std::forward_list<Item>& timeline, const Item& item) {
+    auto it_prev = timeline.before_begin();
+    for (auto it = timeline.begin(); it != timeline.end(); ++it) {
+      it_prev = it;
+    }
+
+    timeline.insert_after(it_prev, item);
+  }
+
   template<typename T>
-  bool TimelineInsertion(const utils::TimeSpan& vt, bool inverse, const T& list) {
+  bool TimelineInsertion(const utils::TimeSpan& vt, bool inverse, T& list) {
     //TODO ensure write is valued
     bool write = false;
 
@@ -57,7 +113,7 @@ namespace utils {
       if (inverse)
         return false;
 
-      list.emplace_back(vt);
+      InsertIntoVector(list, vt);
       return true;
     }
 
@@ -68,10 +124,10 @@ namespace utils {
       }
 
       list.clear();
-      list.emplace_back(vt);
+      InsertIntoVector(list, vt);
     }
 
-    T v_new;
+    std::vector<typename T::value_type> v_new;
     v_new.reserve(2);
 
     bool vt_written = false, deleting = false;
@@ -92,7 +148,7 @@ namespace utils {
           }else {
             if (end < itx->second) {
               end = itx->second;
-              *edit_vt.second = end;
+              edit_vt->second = end;
             }
 
             if (!deleting) {
@@ -128,9 +184,9 @@ namespace utils {
 
       }
 
-      if (vt.second < itx.first) {
+      if (vt.second < itx->first) {
         if (vt_written) {
-          if (itx.first == VTDateTime::next(vt.second) && !inverse) {
+          if (itx->first == VTDateTime::next(vt.second) && !inverse) {
             edit_vt->second = itx->second;
 
             if (!deleting) {
@@ -180,7 +236,7 @@ namespace utils {
       }
 
       if (vt.overlaps(vtlist) ) {
-        result.add(vt.intersect(vtlist),true);
+        result.add(vt.intersect(vtlist));
       }
 
       if (vt.second < vtlist.second)
@@ -215,13 +271,13 @@ namespace utils {
   }
 
   template<typename T, typename V>
-  bool ValuedTimelineInsertion(const TimeSpan& vt, bool inverse, const T& list, const V& value) {
+  bool ValuedTimelineInsertion(const TimeSpan& vt, bool inverse, T& list, const V& value) {
     bool write = false;
 
     auto& timeline = list;
 
     if (timeline.empty()) {
-      timeline.emplace_back(vt, value);
+      InsertIntoVector(timeline, std::make_pair(vt, value));
 
       return true;
     }

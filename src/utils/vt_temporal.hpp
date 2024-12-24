@@ -68,11 +68,11 @@ public:
         return microseconds;
     }
 
-    static VTDateTime constexpr max() noexcept {
+    static VTDateTime max() noexcept {
         return VTDateTime(std::numeric_limits<int64_t>::max());
     }
 
-    static VTDateTime constexpr min() noexcept {
+    static VTDateTime min() noexcept {
         return VTDateTime(std::numeric_limits<int64_t>::lowest());
     }
 

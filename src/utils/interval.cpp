@@ -3,6 +3,9 @@
 //
 
 #include "interval.hpp"
+
+#include <storage/v2/property_value.hpp>
+
 #include "temporal_functions.hpp"
 
 namespace utils {
@@ -28,7 +31,7 @@ namespace utils {
   std::optional<typename valued_timeline<T>::ConstIterator> valued_timeline<T>::seek(valued_timeline<T>::ConstIterator start, VTDateTime vt) const {
     auto it = start, prev = start;
     while (it != end()) {
-      VTDateTime& span_start = (it->first.first);
+      const VTDateTime& span_start = (it->first.first);
       if (span_start == vt) {
         return it;
       }
@@ -50,18 +53,15 @@ namespace utils {
 
   template<typename T>
   void valued_timeline<T>::remove(TimeSpan from_to) {
-    if constexpr(is_bool<T>::value)
-      TimelineInsertion(from_to, true, _container_interval);
-    else
-      ValuedTimelineInsertion(from_to, true, _container_interval, T());
+    ValuedTimelineInsertion(from_to, true, _container_interval, T());
   }
 
   template<typename T>
   void valued_timeline<T>::fill_voids(TimeSpan from_to, const T &value) {
-    valued_timeline<T> inverse = this->split(from_to)->invert();
+    timeline inverse = this->split(from_to).invert();
 
     for (auto it = inverse.begin(); it != inverse.end(); ++it) {
-      _container_interval.emplace_front({it->first, value});
+      ValuedTimelineInsertion(*it, false, _container_interval, value);
     }
   }
 
@@ -114,13 +114,13 @@ namespace utils {
   }
 
   template<typename T>
-  T  valued_timeline<T>::get_single(TimeSpan from_to) const {
+  T valued_timeline<T>::get_single(TimeSpan from_to) const {
     auto it = seek(begin(), from_to.first);
 
     if (it == std::nullopt || *it == end())
       return T();
 
-    if (from_to.included(it->first))
+    if (from_to.included((*it)->first))
       return (*it)->second;
 
     return T();
@@ -141,7 +141,7 @@ namespace utils {
 
   template<typename T>
   bool valued_timeline<T>::is_single(TimeSpan from_to) const {
-    auto it = seek(begin(), from_to);
+    auto it = seek(begin(), from_to.first);
 
     if (it == std::nullopt || *it == end())
       return false;
@@ -399,5 +399,8 @@ namespace utils {
   //
   //
   // }
+
+  template class valued_timeline<storage::PropertyValue>;
+  template class valued_timeline<bool>;
 
 }

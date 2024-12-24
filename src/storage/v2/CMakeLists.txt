@@ -9,14 +9,14 @@ set(storage_v2_src_files
     edge_accessor.cpp
     indices.cpp
     property_store.cpp
+    comparers.cpp
+    vt_store.cpp
     vertex_accessor.cpp
     storage.cpp
     history_delta.cpp
     history_vertex.hpp
     history_edge.hpp
-        ../../utils/timespan.hpp
-        vt_store.cpp
-        vt_store.hpp)
+        )
 
 ##### Replication #####
 

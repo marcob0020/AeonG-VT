@@ -24,6 +24,8 @@
 
 namespace storage {
 
+class VtStore;
+
 struct Vertex {
   Vertex(Gid gid, Delta *delta) : gid(gid), deleted(false), delta(delta) {
     transaction_st=0;
@@ -41,7 +43,6 @@ struct Vertex {
 
   std::vector<LabelId> labels;
   PropertyStore properties;
-  VtStore vt_store;
 
   std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> in_edges;
   std::vector<std::tuple<EdgeTypeId, Vertex *, EdgeRef>> out_edges;
@@ -55,6 +56,8 @@ struct Vertex {
   uint64_t transaction_st;
   uint64_t ve_tt_ts;
   Delta *delta;
+
+  storage::VtStore vt_store;
 };
 
 static_assert(alignof(Vertex) >= 8, "The Vertex should be aligned to at least 8!");
