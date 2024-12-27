@@ -4,6 +4,7 @@
 
 #pragma once
 
+
 #include "timespan.hpp"
 
 namespace utils{
@@ -38,9 +39,9 @@ namespace utils{
       VTDateTime first;
       VTDateTime second;
 
-      TemporalFilter():type(TemporalQueryType::NONE),first(0),second(0){}
+      TemporalFilter():type(TemporalQueryType::NONE),first(VTDateTime::min()),second(VTDateTime::max()){}
 
-      bool matches(const utils::VTDateTime& t1, const utils::VTDateTime& t2) const {
+      bool matches(const VTDateTime& t1, const VTDateTime& t2) const {
         switch (type) {
           case TemporalQueryType::NONE:
             return true;
@@ -58,19 +59,19 @@ namespace utils{
         return type != TemporalQueryType::NONE;
       }
 
-      utils::VTDateTime get_first() const {
+      VTDateTime get_first() const {
         switch (type) {
           case TemporalQueryType::NONE:
-            return utils::VTDateTime::min();
+            return VTDateTime::min();
           default:
             return first;
         }
       }
 
-      utils::VTDateTime get_second() const {
+      VTDateTime get_second() const {
         switch (type) {
           case TemporalQueryType::NONE:
-            return utils::VTDateTime::max();
+            return VTDateTime::max();
           case TemporalQueryType::AS_OF:
             return first;
           default:
@@ -78,11 +79,11 @@ namespace utils{
         }
       }
 
-      utils::TimeSpan get_span() const {
+      TimeSpan get_span() const {
         return {get_first(), get_second()};
       }
 
-      bool whole() {
+      bool whole() const {
         return type != TemporalQueryType::AS_OF && first == VTDateTime::min() && second == VTDateTime::max();
       }
 
@@ -91,6 +92,11 @@ namespace utils{
         os << "{" << ldt.first << "," << ldt.second << "}";
         return os;
       }
+
+      bool whole_or_none() const {
+        return whole() || !is_temporal();
+      }
+
     };
 
 

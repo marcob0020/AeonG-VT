@@ -43,6 +43,7 @@
 #include "storage/v2/view.hpp"
 #include "utils/bound.hpp"
 #include "utils/exceptions.hpp"
+#include "utils/temporal_filter.hpp"
 
 
 namespace query {
@@ -55,6 +56,10 @@ class EdgeAccessor final {
 
  public:
   explicit EdgeAccessor(storage::EdgeAccessor impl) : impl_(std::move(impl)) {}
+
+  bool HasTemporalFeatures() {
+    return impl_.HasTemporalFeatures();
+  }
 
   bool IsVisible(storage::View view) const {
     if (impl_.HasTemporalFeatures())
@@ -103,7 +108,10 @@ class EdgeAccessor final {
   }
 
   storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value, const utils::TemporalFilter& vt) {
-    return impl_.SetProperty(key, value, vt.get_span());
+    if (impl_.HasTemporalFeatures() || !vt.whole())
+      return impl_.SetProperty(key, value, vt.get_span());
+
+    return impl_.SetProperty(key, value);
   }
 
   storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key) {
@@ -111,6 +119,8 @@ class EdgeAccessor final {
   }
 
   storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key, const utils::TemporalFilter& vt) {
+    if (!impl_.HasTemporalFeatures() && vt.whole())
+      return SetProperty(key, storage::PropertyValue(), vt);
     return SetProperty(key, storage::PropertyValue(), vt);
   }
 
@@ -121,6 +131,8 @@ class EdgeAccessor final {
   }
 
   storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties(const utils::TemporalFilter& vt) {
+    if (!impl_.HasTemporalFeatures() && vt.whole())
+      return impl_.ClearProperties();
     return impl_.ClearProperties(vt.get_span());
   }
 
@@ -160,6 +172,10 @@ class VertexAccessor final {
 
   // explicit VertexAccessor(storage::VertexAccessor impl) : impl_(impl) {}
 
+  bool HasTemporalFeatures() {
+    return impl_.HasTemporalFeatures();
+  }
+
   bool IsVisible(storage::View view) const {
     if (impl_.HasTemporalFeatures())
       return impl_.IsVisible(view, impl_.GetNowFilter());
@@ -191,6 +207,8 @@ class VertexAccessor final {
   }
 
   storage::Result<bool> AddLabel(storage::LabelId label, const utils::TemporalFilter& vt) {
+    if (!impl_.HasTemporalFeatures() && vt.whole())
+      return impl_.AddLabel(label);
     return impl_.AddLabel(label, vt.get_span());
   }
 
@@ -201,6 +219,8 @@ class VertexAccessor final {
   }
 
   storage::Result<bool> RemoveLabel(storage::LabelId label, const utils::TemporalFilter& vt) {
+    if (!impl_.HasTemporalFeatures() && vt.whole())
+      return impl_.RemoveLabel(label);
     return impl_.RemoveLabel(label, vt.get_span());
   }
 
@@ -249,15 +269,17 @@ class VertexAccessor final {
   }
 
   storage::Result<storage::PropertyValue> SetProperty(storage::PropertyId key, const storage::PropertyValue &value, const utils::TemporalFilter& vt) {
+    if (!impl_.HasTemporalFeatures() && vt.whole())
+      return impl_.SetProperty(key, value);
     return impl_.SetProperty(key, value, vt.get_span());
   }
 
   storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key) {
-    return SetProperty(key, storage::PropertyValue());
+    return SetProperty(key, storage::PropertyValue()); //not calling impl_, but this class' method
   }
 
   storage::Result<storage::PropertyValue> RemoveProperty(storage::PropertyId key, const utils::TemporalFilter& vt) {
-    return SetProperty(key, storage::PropertyValue(), vt);
+    return SetProperty(key, storage::PropertyValue(), vt); //not calling impl_, but this class' method
   }
 
   storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties() {
@@ -267,6 +289,9 @@ class VertexAccessor final {
   }
 
   storage::Result<std::map<storage::PropertyId, storage::PropertyValue>> ClearProperties(const utils::TemporalFilter& vt) {
+    if (!impl_.HasTemporalFeatures() && vt.whole())
+      return impl_.ClearProperties();
+
     return impl_.ClearProperties(vt.get_span());
   }
 
@@ -553,6 +578,9 @@ class DbAccessor final {
   }
 
   VertexAccessor InsertVertex(const utils::TemporalFilter& vt) {
+    if (vt.whole())
+      return VertexAccessor(accessor_->CreateVertex());
+
     return VertexAccessor(accessor_->CreateVertex(vt.get_span()));
   }
 
@@ -565,7 +593,7 @@ class DbAccessor final {
 
   storage::Result<EdgeAccessor> InsertEdge(VertexAccessor *from, VertexAccessor *to,
                                            const storage::EdgeTypeId &edge_type, const utils::TemporalFilter& vt) {
-    auto maybe_edge = accessor_->CreateEdge(&from->impl_, &to->impl_, edge_type, vt.get_span());
+    auto maybe_edge = vt.whole() ? accessor_->CreateEdge(&from->impl_, &to->impl_, edge_type) :  accessor_->CreateEdge(&from->impl_, &to->impl_, edge_type, vt.get_span());
     if (maybe_edge.HasError()) return storage::Result<EdgeAccessor>(maybe_edge.GetError());
     return EdgeAccessor(*maybe_edge);
   }
@@ -586,7 +614,7 @@ class DbAccessor final {
   }
 
   storage::Result<std::optional<EdgeAccessor>> RemoveEdge(EdgeAccessor *edge, const utils::TemporalFilter& vt) {
-    auto res = edge->impl_.HasTemporalFeatures() || vt.is_temporal() ? accessor_->DeleteEdge(&edge->impl_, vt.get_span()) : accessor_->DeleteEdge(&edge->impl_);
+    auto res = !edge->impl_.HasTemporalFeatures() && vt.whole() ? accessor_->DeleteEdge(&edge->impl_) : accessor_->DeleteEdge(&edge->impl_, vt.get_span());
 
     if (res.HasError()) {
       return res.GetError();
@@ -628,7 +656,7 @@ class DbAccessor final {
       VertexAccessor *vertex_accessor, const utils::TemporalFilter& vt) {
     using ReturnType = std::pair<VertexAccessor, std::vector<EdgeAccessor>>;
 
-    auto res = accessor_->DetachDeleteVertex(&vertex_accessor->impl_, vt.get_span());
+    auto res = !vertex_accessor->HasTemporalFeatures() && vt.whole() ? accessor_->DetachDeleteVertex(&vertex_accessor->impl_) : accessor_->DetachDeleteVertex(&vertex_accessor->impl_, vt.get_span());
     if (res.HasError()) {
       return res.GetError();
     }
@@ -663,7 +691,7 @@ class DbAccessor final {
   }
 
   storage::Result<std::optional<VertexAccessor>> RemoveVertex(VertexAccessor *vertex_accessor, const utils::TemporalFilter& vt) {
-    auto res = accessor_->DeleteVertex(&vertex_accessor->impl_, vt.get_span());
+    auto res = !vertex_accessor->HasTemporalFeatures() && vt.whole() ? accessor_->DeleteVertex(&vertex_accessor->impl_) : accessor_->DeleteVertex(&vertex_accessor->impl_, vt.get_span());
     if (res.HasError()) {
       return res.GetError();
     }
