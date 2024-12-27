@@ -586,7 +586,8 @@ class DbAccessor final {
   }
 
   storage::Result<std::optional<EdgeAccessor>> RemoveEdge(EdgeAccessor *edge, const utils::TemporalFilter& vt) {
-    auto res = accessor_->DeleteEdge(&edge->impl_, vt.get_span());
+    auto res = edge->impl_.HasTemporalFeatures() || vt.is_temporal() ? accessor_->DeleteEdge(&edge->impl_, vt.get_span()) : accessor_->DeleteEdge(&edge->impl_);
+
     if (res.HasError()) {
       return res.GetError();
     }

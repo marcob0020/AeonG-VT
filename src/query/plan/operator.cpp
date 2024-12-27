@@ -76,7 +76,7 @@
   }
 
 namespace history_delta{
-extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type);
+//extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type);
 extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType types_);
 extern  std::vector<std::string> splits(const std::string &str, const std::string &pattern);
 };
@@ -183,11 +183,12 @@ CreateNode::CreateNode(const std::shared_ptr<LogicalOperator> &input, const Node
 // Creates a vertex on this GraphDb. Returns a reference to vertex placed on the
 // frame.
 VertexAccessor &CreateLocalVertex(const NodeCreationInfo &node_info, Frame *frame, ExecutionContext &context) {
+  bool temporal = context.addition_vt.is_temporal();
   auto &dba = *context.db_accessor;
-  auto new_node = dba.InsertVertex();
+  auto new_node = temporal ? dba.InsertVertex(context.addition_vt) : dba.InsertVertex();
   context.execution_stats[ExecutionStats::Key::CREATED_NODES] += 1;
   for (auto label : node_info.labels) {
-    auto maybe_error = new_node.AddLabel(label);
+    auto maybe_error = temporal ? new_node.AddLabel(label, context.addition_vt) : new_node.AddLabel(label);
     if (maybe_error.HasError()) {
       switch (maybe_error.GetError()) {
         case storage::Error::SERIALIZATION_ERROR:
@@ -210,13 +211,20 @@ VertexAccessor &CreateLocalVertex(const NodeCreationInfo &node_info, Frame *fram
   // when we update PropertyValue with custom allocator.
   if (const auto *node_info_properties = std::get_if<PropertiesMapList>(&node_info.properties)) {
     for (const auto &[key, value_expression] : *node_info_properties) {
-      PropsSetChecked(&new_node, key, value_expression->Accept(evaluator));
+      if (temporal)
+        PropsSetChecked(&new_node, key, value_expression->Accept(evaluator), context.addition_vt);
+      else {
+        PropsSetChecked(&new_node, key, value_expression->Accept(evaluator));
+      }
     }
   } else {
     auto property_map = evaluator.Visit(*std::get<ParameterLookup *>(node_info.properties));
     for (const auto &[key, value] : property_map.ValueMap()) {
       auto property_id = dba.NameToProperty(key);
-      PropsSetChecked(&new_node, property_id, value);
+      if (temporal)
+        PropsSetChecked(&new_node, property_id, value, context.addition_vt);
+      else
+        PropsSetChecked(&new_node, property_id, value);
     }
   }
 
@@ -288,19 +296,26 @@ CreateExpand::CreateExpandCursor::CreateExpandCursor(const CreateExpand &self, u
 namespace {
 
 EdgeAccessor CreateEdge(const EdgeCreationInfo &edge_info, DbAccessor *dba, VertexAccessor *from, VertexAccessor *to,
-                        Frame *frame, ExpressionEvaluator *evaluator) {
-  auto maybe_edge = dba->InsertEdge(from, to, edge_info.edge_type);
+                        Frame *frame, ExpressionEvaluator *evaluator, ExecutionContext &context) {
+  bool temporal = context.addition_vt.is_temporal();
+  auto maybe_edge = temporal ? dba->InsertEdge(from, to, edge_info.edge_type, context.addition_vt) : dba->InsertEdge(from, to, edge_info.edge_type);
   if (maybe_edge.HasValue()) {
     auto &edge = *maybe_edge;
     if (const auto *properties = std::get_if<PropertiesMapList>(&edge_info.properties)) {
       for (const auto &[key, value_expression] : *properties) {
-        PropsSetChecked(&edge, key, value_expression->Accept(*evaluator));
+        if (temporal)
+          PropsSetChecked(&edge, key, value_expression->Accept(*evaluator), context.addition_vt);
+        else
+          PropsSetChecked(&edge, key, value_expression->Accept(*evaluator));
       }
     } else {
       auto property_map = evaluator->Visit(*std::get<ParameterLookup *>(edge_info.properties));
       for (const auto &[key, value] : property_map.ValueMap()) {
         auto property_id = dba->NameToProperty(key);
-        PropsSetChecked(&edge, property_id, value);
+        if (temporal)
+          PropsSetChecked(&edge, property_id, value, context.addition_vt);
+        else
+          PropsSetChecked(&edge, property_id, value);
       }
     }
 
@@ -348,14 +363,14 @@ bool CreateExpand::CreateExpandCursor::Pull(Frame &frame, ExecutionContext &cont
   auto created_edge = [&] {
     switch (self_.edge_info_.direction) {
       case EdgeAtom::Direction::IN:
-        return CreateEdge(self_.edge_info_, dba, &v2, &v1, &frame, &evaluator);
+        return CreateEdge(self_.edge_info_, dba, &v2, &v1, &frame, &evaluator, context);
       case EdgeAtom::Direction::OUT:
       // in the case of an undirected CreateExpand we choose an arbitrary
       // direction. this is used in the MERGE clause
       // it is not allowed in the CREATE clause, and the semantic
       // checker needs to ensure it doesn't reach this point
       case EdgeAtom::Direction::BOTH:
-        return CreateEdge(self_.edge_info_, dba, &v1, &v2, &frame, &evaluator);
+        return CreateEdge(self_.edge_info_, dba, &v1, &v2, &frame, &evaluator, context);
     }
   }();
 
@@ -539,7 +554,7 @@ class ScanAllCursor : public Cursor {
         if (!input_cursor_->Pull(frame, context)) {
           return false;
         }
-        auto next_vertices = get_vertices_(frame, context);//makecursor定义的获取节点的函数
+        auto next_vertices = get_vertices_(frame, context);//makecursor function defined to get nodes
         if (!next_vertices){
           continue;
         } 
@@ -918,6 +933,7 @@ void Expand::ExpandCursor::Reset() {
 bool Expand::ExpandCursor::InitEdges(Frame &frame, ExecutionContext &context) {
   // Input Vertex could be null if it is created by a failed optional match. In
   // those cases we skip that input pull and continue with the next.
+  bool temporal = context.addition_vt.is_temporal();
   while (true) {
     if (!input_cursor_->Pull(frame, context)) return false;
     TypedValue &vertex_value = frame[self_.input_symbol_];
@@ -936,11 +952,15 @@ bool Expand::ExpandCursor::InitEdges(Frame &frame, ExecutionContext &context) {
         // old_node_value may be Null when using optional matching
         if (!existing_node.IsNull()) {
           ExpectType(self_.common_.node_symbol, existing_node, TypedValue::Type::Vertex);
-          in_edges_.emplace(
-              UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex())));
+          if (temporal)
+            in_edges_.emplace(
+              UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex(), context.addition_vt)));
+          else
+            in_edges_.emplace(
+                UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex())));
         }
       } else {
-        in_edges_.emplace(UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types)));
+        in_edges_.emplace(UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, context.addition_vt)));
       }
       if (in_edges_) {
         in_edges_it_.emplace(in_edges_->begin());
@@ -954,10 +974,10 @@ bool Expand::ExpandCursor::InitEdges(Frame &frame, ExecutionContext &context) {
         if (!existing_node.IsNull()) {
           ExpectType(self_.common_.node_symbol, existing_node, TypedValue::Type::Vertex);
           out_edges_.emplace(
-              UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex())));
+              UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex(), context.addition_vt)));
         }
       } else {
-        out_edges_.emplace(UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types)));
+        out_edges_.emplace(UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types, context.addition_vt)));
       }
       if (out_edges_) {
         out_edges_it_.emplace(out_edges_->begin());
@@ -1028,7 +1048,7 @@ void addHistoryEdge(EdgeAccessor current_edge_,uint64_t current_v_ts,uint64_t cu
   }
   
   //If there is no need to delete the current node and the type is as of, return directly without traversing historical data.
-  if(!delete_flag&historyContext_.types==utils::TemporalQueryType::AS_OF){
+  if(!delete_flag&&historyContext_.types==utils::TemporalQueryType::AS_OF){
     context.db_accessor->saveHistoryEdgeFlag(gid,historyContext_.c_ts,historyContext_.c_te);
     return ;
   }
@@ -1147,7 +1167,7 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
       if (!existing_node.IsNull()) {
         if(existing_node.type()==TypedValue::Type::Vertex){
           in_edges_.emplace(
-            UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex())));
+            UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex(), context.addition_vt)));
         }
         else if(existing_node.type()==TypedValue::Type::HistoryVertex){
           // in_edges_.emplace(
@@ -1156,7 +1176,7 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
         else ExpectType(self_.common_.node_symbol, existing_node, TypedValue::Type::Vertex);//unknow imply
       }
     } else {
-      in_edges_.emplace(UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types)));
+      in_edges_.emplace(UnwrapEdgesResult(vertex.InEdges(self_.view_, self_.common_.edge_types, context.addition_vt)));
     }
 
     if (in_edges_) {
@@ -1182,7 +1202,7 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
         if(existing_node.type()==TypedValue::Type::Vertex){
           ExpectType(self_.common_.node_symbol, existing_node, TypedValue::Type::Vertex);
           out_edges_.emplace(
-            UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex())));
+            UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types, existing_node.ValueVertex(), context.addition_vt)));
         }
         else if(existing_node.type()==TypedValue::Type::HistoryVertex){
           // in_edges_.emplace(
@@ -1193,7 +1213,7 @@ void Expand::ExpandCursor::InitHistoryEdgesByCurrentVertex(Frame &frame,Executio
       }
     } else {
       //  std::cout<<"maybe here2\n";
-      out_edges_.emplace(UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types)));
+      out_edges_.emplace(UnwrapEdgesResult(vertex.OutEdges(self_.view_, self_.common_.edge_types, context.addition_vt)));
     }
     if (out_edges_) {
       out_edges_it_.emplace(out_edges_->begin());
@@ -1381,7 +1401,7 @@ auto wrapper = [](EdgeAtom::Direction direction, auto &&edges) {
                     std::forward<decltype(edges)>(edges));
 };
 auto ExpandFromVertex(const VertexAccessor &vertex, EdgeAtom::Direction direction,
-                      const std::vector<storage::EdgeTypeId> &edge_types, utils::MemoryResource *memory) {
+                      const std::vector<storage::EdgeTypeId> &edge_types, utils::MemoryResource *memory, ExecutionContext &context) {
   // wraps an EdgeAccessor into a pair <accessor, direction>
   // std::cout<<"expand from vertex\n";
   // auto wrapper = [](EdgeAtom::Direction direction, auto &&edges) {
@@ -1393,13 +1413,13 @@ auto ExpandFromVertex(const VertexAccessor &vertex, EdgeAtom::Direction directio
   utils::pmr::vector<decltype(wrapper(direction, *vertex.InEdges(view, edge_types)))> chain_elements(memory);
 
   if (direction != EdgeAtom::Direction::OUT) {
-    auto edges = UnwrapEdgesResult(vertex.InEdges(view, edge_types));
+    auto edges = UnwrapEdgesResult(vertex.InEdges(view, edge_types,context.addition_vt));
     if (edges.begin() != edges.end()) {
       chain_elements.emplace_back(wrapper(EdgeAtom::Direction::IN, std::move(edges)));
     }
   }
   if (direction != EdgeAtom::Direction::IN) {
-    auto edges = UnwrapEdgesResult(vertex.OutEdges(view, edge_types));
+    auto edges = UnwrapEdgesResult(vertex.OutEdges(view, edge_types, context.addition_vt));
     if (edges.begin() != edges.end()) {
       chain_elements.emplace_back(wrapper(EdgeAtom::Direction::OUT, std::move(edges)));
     }
@@ -1412,7 +1432,7 @@ auto ExpandFromVertex(const VertexAccessor &vertex, EdgeAtom::Direction directio
 
 auto ExpandFromHistoryVertex( storage::HistoryVertex &vertex, EdgeAtom::Direction direction,
                       const std::vector<storage::EdgeTypeId> &edge_types, utils::MemoryResource *memory,ExecutionContext &context) {
-  storage::View view = storage::View::OLD;
+
   std::optional<storage::Gid> existing_gid;
   utils::pmr::vector<decltype(wrapper(direction, *context.db_accessor->Edges(vertex.in_edges,edge_types,vertex.gid,true,existing_gid)))> chain_elements(memory);
 
@@ -1545,11 +1565,12 @@ class ExpandVariableCursor : public Cursor {
   // after a successful pull from the input
   int64_t upper_bound_{-1};
   int64_t lower_bound_{-1};
+  ExecutionContext cached_context_;
 
   // a stack of edge iterables corresponding to the level/depth of
   // the expansion currently being Pulled
   using ExpandEdges = decltype(ExpandFromVertex(std::declval<VertexAccessor>(), EdgeAtom::Direction::IN,
-                                                self_.common_.edge_types, utils::NewDeleteResource()));
+                                                self_.common_.edge_types, utils::NewDeleteResource(), *reinterpret_cast<ExecutionContext*>((void*)nullptr)));
 
   utils::pmr::vector<ExpandEdges> edges_;
   // an iterator indicating the position in the corresponding edges_ element
@@ -1599,7 +1620,7 @@ class ExpandVariableCursor : public Cursor {
       if (upper_bound_ > 0) {
         auto *memory = edges_.get_allocator().GetMemoryResource();
         auto &vertex = vertex_value.ValueVertex();
-        edges_.emplace_back(ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory));
+        edges_.emplace_back(ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory, context));
         edges_it_.emplace_back(edges_.back().begin());
       }
       
@@ -1667,7 +1688,7 @@ class ExpandVariableCursor : public Cursor {
           current_v_ts=vertex.transaction_st();
           current_v_te=vertex.tt_te();
 
-          edges_.emplace_back(ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory));
+          edges_.emplace_back(ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory, context));
         }
         edges_it_.emplace_back(edges_.back().begin());
       }
@@ -1811,7 +1832,7 @@ class ExpandVariableCursor : public Cursor {
       if (upper_bound_ > static_cast<int64_t>(edges_.size())) {
         auto *memory = edges_.get_allocator().GetMemoryResource();
         edges_.emplace_back(
-            ExpandFromVertex(current_vertex, self_.common_.direction, self_.common_.edge_types, memory));
+            ExpandFromVertex(current_vertex, self_.common_.direction, self_.common_.edge_types, memory, context));
         edges_it_.emplace_back(edges_.back().begin());
       }
 
@@ -1930,7 +1951,7 @@ class ExpandVariableCursor : public Cursor {
           current_v_te=vertex.tt_te();
           test_gid=vertex.Gid().AsUint();
           edges_.emplace_back(
-            ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory));
+            ExpandFromVertex(vertex, self_.common_.direction, self_.common_.edge_types, memory, context));
         }else {
           storage::HistoryVertex& vertex=current_vertex.ValueHistoryVertex();
           current_v_ts=vertex.tt_ts;
@@ -2100,7 +2121,7 @@ class STShortestPathCursor : public query::plan::Cursor {
 
       for (const auto &vertex : source_frontier) {
         if (self_.common_.direction != EdgeAtom::Direction::IN) {
-          auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types));
+          auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
           for (const auto &edge : out_edges) {
             if (ShouldExpand(edge.To(), edge, frame, evaluator) && !Contains(in_edge, edge.To())) {
               in_edge.emplace(edge.To(), edge);
@@ -2117,7 +2138,7 @@ class STShortestPathCursor : public query::plan::Cursor {
           }
         }
         if (self_.common_.direction != EdgeAtom::Direction::OUT) {
-          auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types));
+          auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
           for (const auto &edge : in_edges) {
             if (ShouldExpand(edge.From(), edge, frame, evaluator) && !Contains(in_edge, edge.From())) {
               in_edge.emplace(edge.From(), edge);
@@ -2148,7 +2169,7 @@ class STShortestPathCursor : public query::plan::Cursor {
       // reversed.
       for (const auto &vertex : sink_frontier) {
         if (self_.common_.direction != EdgeAtom::Direction::OUT) {
-          auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types));
+          auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
           for (const auto &edge : out_edges) {
             if (ShouldExpand(vertex, edge, frame, evaluator) && !Contains(out_edge, edge.To())) {
               out_edge.emplace(edge.To(), edge);
@@ -2165,7 +2186,7 @@ class STShortestPathCursor : public query::plan::Cursor {
           }
         }
         if (self_.common_.direction != EdgeAtom::Direction::IN) {
-          auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types));
+          auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
           for (const auto &edge : in_edges) {
             if (ShouldExpand(vertex, edge, frame, evaluator) && !Contains(out_edge, edge.From())) {
               out_edge.emplace(edge.From(), edge);
@@ -2240,13 +2261,13 @@ class SingleSourceShortestPathCursor : public query::plan::Cursor {
     // populates the to_visit_next_ structure with expansions
     // from the given vertex. skips expansions that don't satisfy
     // the "where" condition.
-    auto expand_from_vertex = [this, &expand_pair](const auto &vertex) {
+    auto expand_from_vertex = [this, &expand_pair, &context](const auto &vertex) {
       if (self_.common_.direction != EdgeAtom::Direction::IN) {
-        auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types));
+        auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
         for (const auto &edge : out_edges) expand_pair(edge, edge.To());
       }
       if (self_.common_.direction != EdgeAtom::Direction::OUT) {
-        auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types));
+        auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
         for (const auto &edge : in_edges) expand_pair(edge, edge.From());
       }
     };
@@ -2423,16 +2444,16 @@ class ExpandWeightedShortestPathCursor : public query::plan::Cursor {
     // Populates the priority queue structure with expansions
     // from the given vertex. skips expansions that don't satisfy
     // the "where" condition.
-    auto expand_from_vertex = [this, &expand_pair](const VertexAccessor &vertex, const TypedValue &weight,
+    auto expand_from_vertex = [this, &expand_pair, &context](const VertexAccessor &vertex, const TypedValue &weight,
                                                    int64_t depth) {
       if (self_.common_.direction != EdgeAtom::Direction::IN) {
-        auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types));
+        auto out_edges = UnwrapEdgesResult(vertex.OutEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
         for (const auto &edge : out_edges) {
           expand_pair(edge, edge.To(), weight, depth);
         }
       }
       if (self_.common_.direction != EdgeAtom::Direction::OUT) {
-        auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types));
+        auto in_edges = UnwrapEdgesResult(vertex.InEdges(storage::View::OLD, self_.common_.edge_types, context.addition_vt));
         for (const auto &edge : in_edges) {
           expand_pair(edge, edge.From(), weight, depth);
         }
@@ -2842,7 +2863,7 @@ bool Delete::DeleteCursor::Pull(Frame &frame, ExecutionContext &context) {
   for (TypedValue &expression_result : expression_results) {
     if (MustAbort(context)) throw HintedAbortError();
     if (expression_result.type() == TypedValue::Type::Edge) {
-      auto maybe_value = dba.RemoveEdge(&expression_result.ValueEdge());
+      auto maybe_value = dba.RemoveEdge(&expression_result.ValueEdge(),context.addition_vt);
       if (maybe_value.HasError()) {
         switch (maybe_value.GetError()) {
           case storage::Error::SERIALIZATION_ERROR:
@@ -2868,7 +2889,7 @@ bool Delete::DeleteCursor::Pull(Frame &frame, ExecutionContext &context) {
       case TypedValue::Type::Vertex: {
         auto &va = expression_result.ValueVertex();
         if (self_.detach_) {
-          auto res = dba.DetachRemoveVertex(&va);
+          auto res = dba.DetachRemoveVertex(&va, context.addition_vt);
           if (res.HasError()) {
             switch (res.GetError()) {
               case storage::Error::SERIALIZATION_ERROR:
@@ -2899,7 +2920,7 @@ bool Delete::DeleteCursor::Pull(Frame &frame, ExecutionContext &context) {
             }
           });
         } else {
-          auto res = dba.RemoveVertex(&va);
+          auto res = dba.RemoveVertex(&va, context.addition_vt);
           if (res.HasError()) {
             switch (res.GetError()) {
               case storage::Error::SERIALIZATION_ERROR:
@@ -2960,6 +2981,8 @@ SetProperty::SetPropertyCursor::SetPropertyCursor(const SetProperty &self, utils
 bool SetProperty::SetPropertyCursor::Pull(Frame &frame, ExecutionContext &context) {
   SCOPED_PROFILE_OP("SetProperty");
 
+  bool temporal = context.addition_vt.is_temporal();
+
   if (!input_cursor_->Pull(frame, context)) return false;
 
   // Set, just like Create needs to see the latest changes.
@@ -2970,7 +2993,7 @@ bool SetProperty::SetPropertyCursor::Pull(Frame &frame, ExecutionContext &contex
 
   switch (lhs.type()) {
     case TypedValue::Type::Vertex: {
-      auto old_value = PropsSetChecked(&lhs.ValueVertex(), self_.property_, rhs);
+      auto old_value = temporal ? PropsSetChecked(&lhs.ValueVertex(), self_.property_, rhs, context.addition_vt) :  PropsSetChecked(&lhs.ValueVertex(), self_.property_, rhs);
       context.execution_stats[ExecutionStats::Key::UPDATED_PROPERTIES] += 1;
       if (context.trigger_context_collector) {
         // rhs cannot be moved because it was created with the allocator that is only valid during current pull
@@ -2980,7 +3003,7 @@ bool SetProperty::SetPropertyCursor::Pull(Frame &frame, ExecutionContext &contex
       break;
     }
     case TypedValue::Type::Edge: {
-      auto old_value = PropsSetChecked(&lhs.ValueEdge(), self_.property_, rhs);
+      auto old_value = temporal ? PropsSetChecked(&lhs.ValueEdge(), self_.property_, rhs, context.addition_vt) : PropsSetChecked(&lhs.ValueEdge(), self_.property_, rhs);
       context.execution_stats[ExecutionStats::Key::UPDATED_PROPERTIES] += 1;
       if (context.trigger_context_collector) {
         // rhs cannot be moved because it was created with the allocator that is only valid during current pull
@@ -3047,7 +3070,7 @@ void SetPropertiesOnRecord(TRecordAccessor *record, const TypedValue &rhs, SetPr
       context->trigger_context_collector &&
       context->trigger_context_collector->ShouldRegisterObjectPropertyChange<TRecordAccessor>();
   if (op == SetProperties::Op::REPLACE) {
-    auto maybe_value = record->ClearProperties();
+    auto maybe_value = record->ClearProperties(context->addition_vt);
     if (maybe_value.HasError()) {
       switch (maybe_value.GetError()) {
         case storage::Error::DELETED_OBJECT:
@@ -3103,7 +3126,7 @@ void SetPropertiesOnRecord(TRecordAccessor *record, const TypedValue &rhs, SetPr
 
   auto set_props = [&, record](auto properties) {
     for (auto &kv : properties) {
-      auto maybe_error = record->SetProperty(kv.first, kv.second);
+      auto maybe_error = record->SetProperty(kv.first, kv.second, context->addition_vt);
       if (maybe_error.HasError()) {
         switch (maybe_error.GetError()) {
           case storage::Error::DELETED_OBJECT:
@@ -3124,6 +3147,8 @@ void SetPropertiesOnRecord(TRecordAccessor *record, const TypedValue &rhs, SetPr
     }
   };
 
+  bool temporal = context->addition_vt.is_temporal();
+
   switch (rhs.type()) {
     case TypedValue::Type::Edge:
       set_props(get_props(rhs.ValueEdge()));
@@ -3134,7 +3159,7 @@ void SetPropertiesOnRecord(TRecordAccessor *record, const TypedValue &rhs, SetPr
     case TypedValue::Type::Map: {
       for (const auto &kv : rhs.ValueMap()) {
         auto key = context->db_accessor->NameToProperty(kv.first);
-        auto old_value = PropsSetChecked(record, key, kv.second);
+        auto old_value = temporal ? PropsSetChecked(record, key, kv.second, context->addition_vt) : PropsSetChecked(record, key, kv.second);
         if (should_register_change) {
           register_set_property(std::move(old_value), key, kv.second);
         }
@@ -3220,7 +3245,7 @@ bool SetLabels::SetLabelsCursor::Pull(Frame &frame, ExecutionContext &context) {
   ExpectType(self_.input_symbol_, vertex_value, TypedValue::Type::Vertex);
   auto &vertex = vertex_value.ValueVertex();
   for (auto label : self_.labels_) {
-    auto maybe_value = vertex.AddLabel(label);
+    auto maybe_value = vertex.AddLabel(label, context.addition_vt);
     if (maybe_value.HasError()) {
       switch (maybe_value.GetError()) {
         case storage::Error::SERIALIZATION_ERROR:
@@ -3276,7 +3301,7 @@ bool RemoveProperty::RemovePropertyCursor::Pull(Frame &frame, ExecutionContext &
   TypedValue lhs = self_.lhs_->expression_->Accept(evaluator);
 
   auto remove_prop = [property = self_.property_, &context](auto *record) {
-    auto maybe_old_value = record->RemoveProperty(property);
+    auto maybe_old_value = record->RemoveProperty(property, context.addition_vt);
     if (maybe_old_value.HasError()) {
       switch (maybe_old_value.GetError()) {
         case storage::Error::DELETED_OBJECT:
@@ -3349,7 +3374,7 @@ bool RemoveLabels::RemoveLabelsCursor::Pull(Frame &frame, ExecutionContext &cont
   ExpectType(self_.input_symbol_, vertex_value, TypedValue::Type::Vertex);
   auto &vertex = vertex_value.ValueVertex();
   for (auto label : self_.labels_) {
-    auto maybe_value = vertex.RemoveLabel(label);
+    auto maybe_value = vertex.RemoveLabel(label, context.addition_vt);
     if (maybe_value.HasError()) {
       switch (maybe_value.GetError()) {
         case storage::Error::SERIALIZATION_ERROR:

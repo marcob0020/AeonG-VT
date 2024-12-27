@@ -113,7 +113,7 @@ storage::PropertyValue PropsSetChecked(T *record, const storage::PropertyId &key
 template <AccessorWithSetProperty T>
 storage::PropertyValue PropsSetChecked(T *record, const storage::PropertyId &key, const TypedValue &value, const utils::TemporalFilter &filter) {
   try {
-    auto maybe_old_value = record->SetProperty(key, storage::PropertyValue(value), filter.get_span());
+    auto maybe_old_value = record->SetProperty(key, storage::PropertyValue(value), filter);
     if (maybe_old_value.HasError()) {
       switch (maybe_old_value.GetError()) {
         case storage::Error::SERIALIZATION_ERROR:
