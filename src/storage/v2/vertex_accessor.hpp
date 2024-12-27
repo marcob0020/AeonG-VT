@@ -29,6 +29,8 @@ class Storage;
 struct Indices;
 struct Constraints;
 
+bool TemporalFlagSet(Vertex* vertex_, utils::TimeSpan span, int n_deltas = 1);
+
 class VertexAccessor final {
  private:
   friend class Storage;

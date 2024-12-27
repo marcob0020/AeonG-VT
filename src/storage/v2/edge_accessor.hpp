@@ -30,6 +30,8 @@ class VertexAccessor;
 struct Indices;
 struct Constraints;
 
+bool TemporalFlagSet(Edge* edge_, utils::TimeSpan span, int n_deltas = 1);
+
 class EdgeAccessor final {
  private:
   friend class Storage;

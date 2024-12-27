@@ -957,9 +957,8 @@ VertexAccessor Storage::Accessor::CreateVertex(const utils::TimeSpan& vt) {
 
   delta->prev.Set(vertex);
 
-  if (!vt.whole()) {
-    vertex->has_vt++;
-  }
+  TemporalFlagSet(vertex, vt);
+
   return VertexAccessor(vertex, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
@@ -1002,9 +1001,7 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const utils::Ti
 
   delta->prev.Set(vertex);
 
-  if (!vt.whole()) {
-    vertex->has_vt++;
-  }
+  TemporalFlagSet(vertex, vt);
 
   return VertexAccessor(vertex, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
@@ -1170,6 +1167,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
   data["SP"]=data2;
 
   vt_range_obj = vt_range_obj.split(vt);
+  int n_delta = 0;
 
   for (const auto& vti : vt_range_obj) {
     auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, Delta::RecreateObjectTag());
@@ -1178,6 +1176,8 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     //save vertex to restore
 
     delta->add_info=data;
+
+    n_delta++;
   }
 
   if (deleteVertexFlag)
@@ -1189,9 +1189,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
     transaction_.prinfVertex_.emplace_back(print);
   }
 
-  if (!vt.whole() && vertex_ptr->has_vt >= 0) {
-    vertex_ptr->has_vt++;
-  }
+  TemporalFlagSet(vertex_ptr, vt, n_delta);
 
   //hjm end
 
@@ -1443,6 +1441,7 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
   data["SP"]=data2;
 
   vt_range_obj = vt_range_obj.split(vt);
+  int n_delta = 0;
 
   for (const auto& vti : vt_range_obj) {
     auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, Delta::RecreateObjectTag());
@@ -1451,15 +1450,15 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
     //save vertex to restore
 
     delta->add_info=data;
+
+    n_delta++;
   }
 
   if (deleteVertexFlag)
     vertex_ptr->deleted = true;
 
 
-  if (!vt.whole() && vertex_ptr->has_vt >= 0) {
-    vertex_ptr->has_vt++;
-  }
+  TemporalFlagSet(vertex_ptr, vt, n_delta);
 
   if(prinfFlag){
     auto print=prinfVertex(vertex_ptr->gid.AsUint(),ts,maybe_properties,maybe_labels);
@@ -1719,16 +1718,12 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
 
-    if (!vt.whole() ) {
-      it->has_vt = 1;
-    }
+    TemporalFlagSet(&*it, vt);
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
 
-  if (!vt.whole() && from_vertex->has_vt >= 0) {
-    from_vertex->has_vt++;
-  }
+  TemporalFlagSet(from_vertex, vt);
 
   from_vertex->out_edges.emplace_back(edge_type, to_vertex, edge);
 
@@ -1739,9 +1734,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
 
   delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
 
-  if (!vt.whole() && to_vertex->has_vt >= 0) {
-    to_vertex->has_vt++;
-  }
+  TemporalFlagSet(to_vertex, vt);
 
   to_vertex->in_edges.emplace_back(edge_type, from_vertex, edge);
   //hjm begin
@@ -2020,9 +2013,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     delta->gid=gid;
     //hjm end
 
-    if (!vt.whole() ) {
-      it->has_vt = 1;
-    }
+    TemporalFlagSet(&*it, vt);
 
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
@@ -2030,9 +2021,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
 
-  if (!vt.whole() && from_vertex->has_vt >= 0) {
-    from_vertex->has_vt++;
-  }
+  TemporalFlagSet(from_vertex, vt);
 
   from_vertex->out_edges.emplace_back(edge_type, to_vertex, edge);
   //hjm begin
@@ -2041,9 +2030,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   //hjm end
   delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
 
-  if (!vt.whole() && to_vertex->has_vt >= 0) {
-    to_vertex->has_vt++;
-  }
+  TemporalFlagSet(to_vertex, vt);
 
   to_vertex->in_edges.emplace_back(edge_type, from_vertex, edge);
 
@@ -2397,9 +2384,6 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
       return false;
     }
 
-    if (!vt.whole() && vertex->has_vt >= 0) {
-      vertex->has_vt++;
-    }
 
     std::swap(*it, *edges->rbegin());
     edges->pop_back();
@@ -2422,10 +2406,13 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     }
   }
 
-  auto createAndFillInDelta = [](const utils::timeline& vt_range, auto fillin_fn) {
+  auto createAndFillInDelta = [](const utils::timeline& vt_range, auto fillin_fn)->int {
+    int n_deltas = 0;
     for (auto& vt: vt_range) {
       fillin_fn(vt);
+      n_deltas++;
     }
+    return n_deltas;
   };
 
   if (config_.properties_on_edges) {
@@ -2445,7 +2432,7 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     {
       utils::timeline vt_range_obj = EdgeVt(from_vertex,OBJECT,std::make_tuple(edge_type, to_vertex, edge_ref),vt);
 
-      createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data](const utils::TimeSpan vtx) {
+      int n_deltas = createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data](const utils::TimeSpan vtx) {
         auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, vtx, Delta::RecreateObjectTag());
         edge_ptr->deleted = true;
         //hjm begin store edge to reconstruct
@@ -2455,6 +2442,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
 
         delta->add_info=data;
       });
+
+      TemporalFlagSet(edge_ptr, vt, n_deltas);
     }
 
     //properties
@@ -2471,24 +2460,28 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   {
     vt_range_out =vt_range_out.split(vt);
 
-    createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
+    int n_deltas = createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
       auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vtx, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref);
       //hjm begin
       delta->transaction_st = from_ts;
       transaction_.ve_changed.insert(from_vertex->gid);
     });
+
+    TemporalFlagSet(from_vertex, vt, n_deltas);
   }
 
   //create deltas for ingoing edges
   {
     vt_range_in = vt_range_in.split(vt);
 
-    createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
+    int n_deltas = createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
       auto delta=CreateAndLinkDelta(&transaction_, to_vertex, vtx, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref);
       //hjm begin
       delta->transaction_st = to_ts;
       transaction_.ve_changed.insert(to_vertex->gid);
     });
+
+    TemporalFlagSet(to_vertex, vt, n_deltas);
   }
 
   // Decrement edge count.
@@ -2543,11 +2536,11 @@ utils::BasicResult<ConstraintViolation, void> Storage::Accessor::Commit(
       auto prev = delta.prev.Get();
       MG_ASSERT(prev.type != PreviousPtr::Type::NULLPTR, "Invalid pointer!");
       if (prev.type == PreviousPtr::Type::VERTEX) {
-        if (!delta.vt.whole() && prev.vertex->has_vt >= 0) {
+        if (prev.vertex->has_vt > 0) {
           commit_vertices_vt.emplace(prev.vertex);
         }
       }else if (prev.type == PreviousPtr::Type::EDGE) {
-        if (!delta.vt.whole() && prev.edge->has_vt >= 0) {
+        if (prev.edge->has_vt > 0) {
           commit_edges_vt.emplace(prev.edge);
         }
       }
@@ -2913,7 +2906,7 @@ void Storage::Accessor::Abort() {
         Delta *current = vertex->delta;
         bool is_vt = !delta.vt.whole() && vertex->has_vt >= 0;
 
-        if (is_vt) {
+        if (vertex->has_vt > 0) {
           vertex->has_vt--;
         }
 
@@ -3057,7 +3050,7 @@ void Storage::Accessor::Abort() {
         Delta *current = edge->delta;
         bool is_vt = !delta.vt.whole() && edge->has_vt >= 0;
 
-        if (is_vt) {
+        if (edge->has_vt > 0) {
           edge->has_vt--;
         }
 

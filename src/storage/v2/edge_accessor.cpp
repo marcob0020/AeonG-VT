@@ -21,6 +21,16 @@
 
 namespace storage {
 
+bool TemporalFlagSet(Edge* edge_, utils::TimeSpan span, int n_deltas) {
+  bool whole = span.whole();
+
+  if (edge_->has_vt >= 0) {
+    edge_->has_vt += n_deltas;
+  }
+
+  return !whole;
+}
+
 utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan &vt) {
   utils::valued_timeline<storage::PropertyValue> coverage(vt);
 
@@ -282,6 +292,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   // transactions get a SERIALIZATION_ERROR.
 
   utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt);
+  int n_deltas = 0;
 
   for (const auto& vti : vt_range_prop) {
     auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, Delta::SetPropertyTag(), property, vti.second);
@@ -290,13 +301,11 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
     delta->to_gid=edge_.ptr->to_gid;
     delta->transaction_st = ts;//edge_.ptr->transaction_st;
     //hjm end
+
+    n_deltas++;
   }
 
-
-
-  if (!vt.whole() && edge_.ptr->has_vt >= 0) {
-    edge_.ptr->has_vt++;
-  }
+  TemporalFlagSet(edge_.ptr, vt, n_deltas);
 
   edge_.ptr->properties.SetProperty(property, value);
   return std::move(current_value);
@@ -412,6 +421,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
 
   auto properties = edge_.ptr->properties.Properties();
   bool all_delete = true;
+  int n_deltas = 0;
 
   for (const auto &property : properties) {
     utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property.first, utils::TimeSpan());
@@ -426,15 +436,15 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
       delta->from_gid=edge_.ptr->from_gid;
       delta->to_gid=edge_.ptr->to_gid;
       delta->transaction_st = ts;
+
+      n_deltas++;
     }
 
 
     //hjm end
   }
 
-  if (!vt.whole() && edge_.ptr->has_vt >= 0) {
-    edge_.ptr->has_vt++;
-  }
+  TemporalFlagSet(edge_.ptr, vt, n_deltas);
 
   if (all_delete)
     edge_.ptr->properties.ClearProperties();

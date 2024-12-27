@@ -111,6 +111,16 @@ namespace {
 }  // namespace
 }  // namespace help
 
+bool TemporalFlagSet(Vertex* vertex_, utils::TimeSpan span, int n_deltas) {
+  bool whole = span.whole();
+
+  if (vertex_->has_vt >= 0) {
+    vertex_->has_vt+= n_deltas;
+  }
+
+  return !whole;
+}
+
 std::optional<VertexAccessor> VertexAccessor::Creates(Vertex *vertex, Transaction *transaction, Indices *indices,
                                                      Constraints *constraints, Config::Items config, View view){
 
@@ -148,7 +158,7 @@ std::optional<VertexAccessor> VertexAccessor::Create(Vertex *vertex, Transaction
 }
 
 bool VertexAccessor::HasTemporalFeatures() const {
-  return vertex_->has_vt;
+  return static_cast<bool>(vertex_->has_vt);
 }
 
 utils::TemporalFilter VertexAccessor::GetNowFilter() const {
@@ -307,6 +317,7 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
   }
 
   utils::timeline vt_range_label = LabelTimeline(label, vt).invert();
+  int n_deltas = 0;
 
   if (!vt_range_label.has_any())
     return false;
@@ -314,15 +325,14 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
   for (const auto& vti: vt_range_label) {
     auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, Delta::RemoveLabelTag(), label);
     delta->transaction_st = ts;
+    n_deltas++;
   }
 
 
   if (std::find(vertex_->labels.begin(), vertex_->labels.end(), label) == vertex_->labels.end())
     vertex_->labels.push_back(label);
 
-  if (!vt.whole() && vertex_->has_vt >= 0) {
-    vertex_->has_vt++;
-  }
+  TemporalFlagSet(vertex_, vt, n_deltas);
 
   //set for aeong time
   transaction_->v_changed.insert(vertex_->gid);
@@ -462,6 +472,7 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label, const utils::TimeSpan& v
 
   utils::timeline vt_range_label = LabelTimeline(label, utils::TimeSpan());
   bool vt_exists_outside_label = false;
+  int n_deltas = 0;
 
   if (vt_range_label.exists_outside(vt))
     vt_exists_outside_label = true;
@@ -474,14 +485,13 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label, const utils::TimeSpan& v
   for (const auto vti: vt_range_label) {
     auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, Delta::AddLabelTag(), label);
     delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
+    n_deltas++;
   }
 
   //aeong set for transaction
   transaction_->v_changed.insert(vertex_->gid);
 
-  if (!vt.whole() && vertex_->has_vt >= 0) {
-    vertex_->has_vt++;
-  }
+  TemporalFlagSet(vertex_, vt, n_deltas);
 
   if (vt_exists_outside_label) {
     auto it = std::find(vertex_->labels.begin(), vertex_->labels.end(), label);
@@ -859,6 +869,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   vt_range_prop.fill_voids(vt,PropertyValue());
 
   auto current_value_x = PropertyValue();
+  int n_deltas = 0;
 
   for (const auto& vti: vt_range_prop) {
     auto current_value = vti.second;
@@ -870,14 +881,13 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
     // transactions get a SERIALIZATION_ERROR.
     auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, Delta::SetPropertyTag(), property, current_value);
     delta->transaction_st = vertex_->transaction_st;//ts;
+    n_deltas++;
 
     if (!current_value.IsNull())
       current_value_x = current_value;
   }
 
-  if (!vt.whole() && vertex_->has_vt >= 0) {
-    vertex_->has_vt++;
-  }
+  TemporalFlagSet(vertex_, vt, n_deltas);
 
   vertex_->properties.SetProperty(property, value);
   vertex_->num+=1;
@@ -1030,6 +1040,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
 
   std::map<PropertyId, std::pair<utils::valued_timeline<PropertyValue>,bool>> properties;
   std::map<PropertyId, PropertyValue> properties_old;
+  int n_deltas = 0;
 
   for (auto& property : vertex_->properties.Properties()) {
     utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property.first, utils::TimeSpan());
@@ -1054,6 +1065,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
       // transactions get a SERIALIZATION_ERROR.
       auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, Delta::SetPropertyTag(), prop.first, current_value);
       delta->transaction_st = vertex_->transaction_st;//ts;
+      n_deltas++;
 
       if (!current_value.IsNull())
         current_value_x = current_value;
@@ -1068,9 +1080,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
   //set for aeong
   transaction_->v_changed.insert(vertex_->gid);
 
-  if (!vt.whole() && vertex_->has_vt >= 0) {
-    vertex_->has_vt++;
-  }
+  TemporalFlagSet(vertex_, vt, n_deltas);
 
   if (vt.whole())
     vertex_->properties.ClearProperties();
