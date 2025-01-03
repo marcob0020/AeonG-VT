@@ -4,10 +4,13 @@
 
 #include "vt_store.hpp"
 
-#include <utils/temporal_filter.hpp>
+#include <query/serialization/property_value.hpp>
 #include <utils/temporal_functions.hpp>
 
 #include "vertex.hpp"
+#include "durability/exceptions.hpp"
+#include "durability/marker.hpp"
+#include "durability/serialization.hpp"
 
 namespace storage {
 
@@ -250,6 +253,10 @@ namespace storage {
     return utils::TimelineInsertion(utils::TimeSpan() , true, lifetime_);
   }
 
+  bool VtStore::IsValid() const {
+    return !lifetime_.empty();
+  }
+
   utils::timeline VtStore::GetLabel(LabelId label, const utils::TimeSpan &vt) const {
     const auto it = labels_.find(label);
 
@@ -306,6 +313,254 @@ namespace storage {
 
     return utils::TimelineInsertion(vt, true, it->second);
   }
+
+  namespace serialization {
+    void SerializeList(durability::BaseEncoder *encoder, const VtStore::TimelineList &list) {
+      encoder->WriteUint(list.size());
+      for (const auto &vt : list) {
+        encoder->WriteUint(vt.first.get_microseconds());
+        encoder->WriteUint(vt.second.get_microseconds());
+      }
+    }
+
+    static const int kInitialAllocationFactorTimeSpan = sizeof(uint64_t) * 2 + 2;
+    static const int kInitialAllocationFactorPropertyValue = sizeof(PropertyValue) + 1;
+
+    std::string SerializeList(const VtStore::TimelineList &list) {
+      std::string result;
+      result.reserve(list.size() * kInitialAllocationFactorTimeSpan);
+
+      for (const auto &vt : list) {
+        result+= std::to_string(utils::MemcpyCast<uint64_t>(vt.first.get_microseconds())) + ":";
+        result+= std::to_string(utils::MemcpyCast<uint64_t>(vt.second.get_microseconds())) + ";";
+      }
+
+      return result;
+    }
+
+
+
+    std::string SerializeValuedList(const VtStore::ValuedTimeline &list) {
+      std::string result;
+      result.reserve(list.size() * kInitialAllocationFactorPropertyValue);
+
+      for (const auto &vt : list) {
+        result+= std::to_string(utils::MemcpyCast<uint64_t>(vt.first.first.get_microseconds())) + ":";
+        result+= std::to_string(utils::MemcpyCast<uint64_t>(vt.first.second.get_microseconds())) + ":";
+        result+= query::serialization::SerializePropertyValue(vt.second).dump();
+      }
+
+      return result;
+    }
+
+    void SerializeValuedList(durability::BaseEncoder *encoder, const VtStore::ValuedTimeline &list) {
+      encoder->WriteUint(list.size());
+      for (const auto &vt : list) {
+        encoder->WriteUint(vt.first.first.get_microseconds());
+        encoder->WriteUint(vt.first.second.get_microseconds());
+        encoder->WritePropertyValue(vt.second);
+      }
+    }
+
+    void SerializeObjectValidity(durability::BaseEncoder *encoder, const VtStore::TimelineList &validity) {
+      if (validity.empty())
+        return;
+      encoder->WriteMarker(durability::Marker::VTSTORE_OBJECT_VALIDITY);
+      SerializeList(encoder, validity);
+    }
+
+    void SerializeEdges(durability::BaseEncoder *encoder, const std::map<EdgeStoreType, VtStore::TimelineList, EdgeStoreTypeComparer> &edges, durability::Marker edge_type) {
+      if (edges.empty())
+        return;
+
+      for (auto it = edges.begin(); it!=edges.end(); it++) {
+        const EdgeStoreType edge = it->first;
+        const VtStore::TimelineList &list = it->second;
+
+        if (list.empty())
+          continue;
+
+        const EdgeTypeId edge_type_id = std::get<0>(edge);
+        const Vertex* vertex = std::get<1>(edge);
+        const EdgeRef& ref = std::get<2>(edge);
+
+        encoder->WriteMarker(edge_type);
+        encoder->WriteUint(edge_type_id.AsUint());
+        encoder->WriteUint(vertex->gid.AsUint());
+        encoder->WriteUint(ref.gid.AsUint());
+        SerializeList(encoder, list);
+      }
+    }
+
+    void SerializeEdges(const std::map<EdgeStoreType, VtStore::TimelineList, EdgeStoreTypeComparer> &edges, const std::string& prefix, std::map<std::string, std::string> &result) {
+      for (auto it = edges.begin(); it!=edges.end(); it++) {
+        const EdgeStoreType edge = it->first;
+        const VtStore::TimelineList &list = it->second;
+
+        if (list.empty())
+          continue;
+
+        const EdgeTypeId edge_type_id = std::get<0>(edge);
+        const Vertex* vertex = std::get<1>(edge);
+        const EdgeRef& ref = std::get<2>(edge);
+
+        std::string prefix2 = prefix + std::to_string(edge_type_id.AsUint()) + ":" + std::to_string(vertex->gid.AsUint()) + ":" + std::to_string(ref.gid.AsUint());
+        result.emplace(prefix2, SerializeList(list));
+      }
+    }
+
+
+
+    void SerializeProperties(durability::BaseEncoder *encoder, const std::map<PropertyId, VtStore::ValuedTimeline> &props) {
+      if (props.empty())
+        return;
+
+      for (auto it = props.begin(); it!=props.end(); it++) {
+        const PropertyId property_id = it->first;
+        const VtStore::ValuedTimeline &valued_list = it->second;
+
+        if (valued_list.empty())
+          continue;
+
+        encoder->WriteMarker(durability::Marker::VTSTORE_PROPERTY);
+        encoder->WriteUint(property_id.AsUint());
+        SerializeValuedList(encoder,valued_list);
+      }
+    }
+
+    void SerializeProperties(const std::map<PropertyId, VtStore::ValuedTimeline> &props, const std::string &prefix, std::map<std::string, std::string> &result) {
+
+      for (auto it = props.begin(); it!=props.end(); it++) {
+        const PropertyId property_id = it->first;
+        const VtStore::ValuedTimeline &valued_list = it->second;
+
+        if (valued_list.empty())
+          continue;
+
+        std::string prefix2 = prefix + std::to_string(property_id.AsUint());
+        result.emplace(prefix2, SerializeValuedList(valued_list));
+      }
+    }
+
+    void DeserializeList(durability::BaseDecoder *decoder, VtStore::TimelineList &list) {
+      std::optional<uint64_t> size = decoder->ReadUint();
+      if (!size) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+      list.clear();
+      list.reserve(size.value());
+
+      for (int i = 0;i!=size;i++) {
+        const std::optional<uint64_t> first = decoder->ReadUint();
+        if (!first) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+        const std::optional<uint64_t> second = decoder->ReadUint();
+        if (!second) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+        list.emplace_back(utils::VTDateTime(utils::MemcpyCast<int64_t>(*first)),utils::VTDateTime(utils::MemcpyCast<int64_t>(*second)));
+      }
+    }
+
+    void DeserializeListNull(durability::BaseDecoder *decoder) {
+      std::optional<uint64_t> size = decoder->ReadUint();
+      if (!size) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+      for (int i = 0;i!=size;i++) {
+        const std::optional<uint64_t> first = decoder->ReadUint();
+        if (!first) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+        const std::optional<uint64_t> second = decoder->ReadUint();
+        if (!second) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+      }
+    }
+
+    void DeserializeValuedList(durability::BaseDecoder *decoder, VtStore::ValuedTimeline &list) {
+      std::optional<uint64_t> size = decoder->ReadUint();
+      if (!size) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+      list.clear();
+      list.reserve(size.value());
+
+      for (int i = 0;i!=size;i++) {
+        const std::optional<uint64_t> first = decoder->ReadUint();
+        if (!first) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+        const std::optional<uint64_t> second = decoder->ReadUint();
+        if (!second) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+        const std::optional<PropertyValue> prop = decoder->ReadPropertyValue();
+        if (!prop) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+
+        list.emplace_back(std::make_pair(utils::TimeSpan(utils::VTDateTime(utils::MemcpyCast<int64_t>(*first)),utils::VTDateTime(utils::MemcpyCast<int64_t>(*second))),*prop));
+      }
+    }
+
+    void DeserializeValuedListNull(durability::BaseDecoder *decoder) {
+      std::optional<uint64_t> size = decoder->ReadUint();
+      if (!size) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+      for (int i = 0;i!=size;i++) {
+        const std::optional<uint64_t> first = decoder->ReadUint();
+        if (!first) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+        const std::optional<uint64_t> second = decoder->ReadUint();
+        if (!second) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+        bool prop = decoder->SkipPropertyValue();
+        if (!prop) throw durability::RecoveryFailure("Invalid data in VT recovery!");
+
+       }
+    }
+  }
+
+  void VtStore::SerializeToWriter(durability::BaseEncoder *encoder) const {
+    encoder->WriteMarker(durability::Marker::SECTION_VTSTORE);
+    serialization::SerializeObjectValidity(encoder, lifetime_);
+    serialization::SerializeEdges(encoder, ingoing_edges_, durability::Marker::VTSTORE_IN_EDGE);
+    serialization::SerializeEdges(encoder, outgoing_edges_, durability::Marker::VTSTORE_OUT_EDGE);
+    serialization::SerializeProperties(encoder, properties_);
+    encoder->WriteMarker(durability::Marker::VTSTORE_END);
+  }
+
+  std::map<std::string,std::string> VtStore::SerializeToStrings() const {
+    std::map<std::string, std::string> result;
+
+    if (!lifetime_.empty())
+      result.emplace("OBJ", serialization::SerializeList(lifetime_));
+
+    if (!ingoing_edges_.empty())
+      serialization::SerializeEdges(ingoing_edges_, "IE", result);
+
+    if (!outgoing_edges_.empty())
+      serialization::SerializeEdges(outgoing_edges_, "OE", result);
+
+    if (!properties_.empty())
+      serialization::SerializeProperties(properties_, "P", result);
+
+    return result;
+  }
+
+  void VtStore::DeserializeIntoValidity(durability::BaseDecoder *decoder) {
+    serialization::DeserializeList(decoder, lifetime_);
+  }
+
+  void VtStore::DeserializeIntoInEdges(durability::BaseDecoder *decoder, std::optional<EdgeStoreType> edge) {
+    if (edge == std::nullopt)
+      serialization::DeserializeListNull(decoder);
+    else
+      serialization::DeserializeList(decoder, ingoing_edges_[*edge]);
+  }
+
+  void VtStore::DeserializeIntoOutEdges(durability::BaseDecoder *decoder, std::optional<EdgeStoreType> edge) {
+    if (edge == std::nullopt)
+      serialization::DeserializeListNull(decoder);
+    else
+      serialization::DeserializeList(decoder, outgoing_edges_[*edge]);
+  }
+
+  void VtStore::DeserializeIntoProperty(durability::BaseDecoder *decoder, std::optional<PropertyId> property) {
+    if (property == std::nullopt)
+      serialization::DeserializeValuedListNull(decoder);
+    else
+      serialization::DeserializeValuedList(decoder, properties_[*property]);
+  }
+
+
 
   bool VtStore::DeleteLabel(LabelId label) {
     return DeleteLabel(label, utils::TimeSpan());

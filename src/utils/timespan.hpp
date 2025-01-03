@@ -72,6 +72,14 @@ struct TimeSpan {
   std::pair<utils::VTDateTime, utils::VTDateTime> get_pair() const {
     return std::make_pair(first, second);
   }
+
+  bool operator == (const TimeSpan &other) const {
+    return first == other.first && second == other.second;
+  }
+
+  bool operator != (const TimeSpan &other) const {
+    return first != other.first || second != other.second;
+  }
 };
 
 }

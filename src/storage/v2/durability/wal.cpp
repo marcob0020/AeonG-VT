@@ -11,6 +11,8 @@
 
 #include "storage/v2/durability/wal.hpp"
 
+#include <utils/timer.hpp>
+
 #include "storage/v2/delta.hpp"
 #include "storage/v2/durability/exceptions.hpp"
 #include "storage/v2/durability/paths.hpp"
@@ -39,6 +41,7 @@ namespace storage::durability {
 //
 // 5) Encoded deltas; each delta is written in the following format:
 //     * commit timestamp
+//     * reference timespan for VT
 //     * action (only one of the actions below are encoded)
 //         * vertex create, vertex delete
 //              * gid
@@ -182,6 +185,12 @@ WalDeltaData::Type MarkerToWalDeltaDataType(Marker marker) {
     case Marker::SECTION_OFFSETS:
     case Marker::VALUE_FALSE:
     case Marker::VALUE_TRUE:
+    case Marker::VTSTORE_END:
+    case Marker::VTSTORE_PROPERTY:
+    case Marker::VTSTORE_IN_EDGE:
+    case Marker::VTSTORE_OUT_EDGE:
+    case Marker::SECTION_VTSTORE:
+    case Marker::VTSTORE_OBJECT_VALIDITY:
       throw RecoveryFailure("Invalid WAL data!");
   }
 }
@@ -195,6 +204,14 @@ WalDeltaData::Type MarkerToWalDeltaDataType(Marker marker) {
 template <bool read_data>
 WalDeltaData ReadSkipWalDeltaData(BaseDecoder *decoder) {
   WalDeltaData delta;
+
+  auto vt_first = decoder->ReadUint();
+  if (!vt_first) throw RecoveryFailure("Invalid WAL data!");
+  auto vt_second = decoder->ReadUint();
+  if (!vt_second) throw RecoveryFailure("Invalid WAL data!");
+
+  utils::TimeSpan vt(utils::VTDateTime(utils::MemcpyCast<int64_t>(*vt_first)),utils::VTDateTime(utils::MemcpyCast<int64_t>(*vt_second)));
+  delta.vt = vt;
 
   auto action = decoder->ReadMarker();
   if (!action) throw RecoveryFailure("Invalid WAL data!");
@@ -416,6 +433,7 @@ WalInfo ReadWalInfo(const std::filesystem::path &path) {
 
 bool operator==(const WalDeltaData &a, const WalDeltaData &b) {
   if (a.type != b.type) return false;
+  if (a.vt != b.vt) return false;
   switch (a.type) {
     case WalDeltaData::Type::VERTEX_CREATE:
     case WalDeltaData::Type::VERTEX_DELETE:
@@ -489,6 +507,9 @@ void EncodeDelta(BaseEncoder *encoder, NameIdMapper *name_id_mapper, Config::Ite
   // actions.
   encoder->WriteMarker(Marker::SECTION_DELTA);
   encoder->WriteUint(timestamp);
+  encoder->WriteUint(utils::MemcpyCast<uint64_t>(delta.vt.first.get_microseconds()));
+  encoder->WriteUint(utils::MemcpyCast<uint64_t>(delta.vt.second.get_microseconds()));
+
   std::lock_guard<utils::SpinLock> guard(vertex.lock);
   switch (delta.action) {
     case Delta::Action::DELETE_OBJECT:
@@ -544,6 +565,9 @@ void EncodeDelta(BaseEncoder *encoder, NameIdMapper *name_id_mapper, const Delta
   // actions.
   encoder->WriteMarker(Marker::SECTION_DELTA);
   encoder->WriteUint(timestamp);
+  encoder->WriteUint(utils::MemcpyCast<uint64_t>(delta.vt.first.get_microseconds()));
+  encoder->WriteUint(utils::MemcpyCast<uint64_t>(delta.vt.second.get_microseconds()));
+
   std::lock_guard<utils::SpinLock> guard(edge.lock);
   switch (delta.action) {
     case Delta::Action::SET_PROPERTY: {
@@ -579,6 +603,8 @@ void EncodeDelta(BaseEncoder *encoder, NameIdMapper *name_id_mapper, const Delta
 void EncodeTransactionEnd(BaseEncoder *encoder, uint64_t timestamp) {
   encoder->WriteMarker(Marker::SECTION_DELTA);
   encoder->WriteUint(timestamp);
+  encoder->WriteUint(0);
+  encoder->WriteUint(0);
   encoder->WriteMarker(Marker::DELTA_TRANSACTION_END);
 }
 
@@ -586,6 +612,8 @@ void EncodeOperation(BaseEncoder *encoder, NameIdMapper *name_id_mapper, Storage
                      LabelId label, const std::set<PropertyId> &properties, uint64_t timestamp) {
   encoder->WriteMarker(Marker::SECTION_DELTA);
   encoder->WriteUint(timestamp);
+  encoder->WriteUint(0);
+  encoder->WriteUint(0);
   switch (operation) {
     case StorageGlobalOperation::LABEL_INDEX_CREATE:
     case StorageGlobalOperation::LABEL_INDEX_DROP: {
@@ -656,20 +684,48 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
       switch (delta.type) {
         case WalDeltaData::Type::VERTEX_CREATE: {
           auto [vertex, inserted] = vertex_acc.insert(Vertex{delta.vertex_create_delete.gid, nullptr});
-          if (!inserted) throw RecoveryFailure("The vertex must be inserted here!");
+          //Not necessary anymore: if VT is used, multiple VERTEX_CREATE may exist
+          //if (!inserted) throw RecoveryFailure("The vertex must be inserted here!");
 
-          ret.next_vertex_id = std::max(ret.next_vertex_id, delta.vertex_create_delete.gid.AsUint() + 1);
+          if (inserted) {
+            ret.next_vertex_id = std::max(ret.next_vertex_id, delta.vertex_create_delete.gid.AsUint() + 1);
+
+            if (!delta.vt.whole())
+              vertex->has_vt = 1;
+          }else {
+            if (!delta.vt.whole() && vertex->has_vt>=0)
+              vertex->has_vt ++;
+          }
+
+          if (vertex->has_vt) {
+            vertex->vt_store.CreateObject(delta.vt);
+          }
+
 
           break;
         }
         case WalDeltaData::Type::VERTEX_DELETE: {
           auto vertex = vertex_acc.find(delta.vertex_create_delete.gid);
           if (vertex == vertex_acc.end()) throw RecoveryFailure("The vertex doesn't exist!");
-          if (!vertex->in_edges.empty() || !vertex->out_edges.empty())
-            throw RecoveryFailure("The vertex can't be deleted because it still has edges!");
+          if (!vertex->has_vt && delta.vt.whole()) {
+            if (!vertex->in_edges.empty() || !vertex->out_edges.empty())
+              throw RecoveryFailure("The vertex can't be deleted because it still has edges!");
 
-          if (!vertex_acc.remove(delta.vertex_create_delete.gid))
-            throw RecoveryFailure("The vertex must be removed here!");
+            if (!vertex_acc.remove(delta.vertex_create_delete.gid))
+              throw RecoveryFailure("The vertex must be removed here!");
+          }else {
+            if (vertex->has_vt>=0)
+              vertex->has_vt ++;
+
+            if (vertex->has_vt) {
+              vertex->vt_store.DeleteObject(delta.vt);
+              if (!vertex->vt_store.IsValid()) {
+                if (!vertex_acc.remove(delta.vertex_create_delete.gid))
+                  throw RecoveryFailure("The vertex must be removed here!");
+              }
+            }
+          }
+
 
           break;
         }
@@ -681,13 +737,35 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
           auto label_id = LabelId::FromUint(name_id_mapper->NameToId(delta.vertex_add_remove_label.label));
           auto it = std::find(vertex->labels.begin(), vertex->labels.end(), label_id);
 
-          if (delta.type == WalDeltaData::Type::VERTEX_ADD_LABEL) {
-            if (it != vertex->labels.end()) throw RecoveryFailure("The vertex already has the label!");
-            vertex->labels.push_back(label_id);
+          if (!vertex->has_vt && delta.vt.whole()) {
+            if (delta.type == WalDeltaData::Type::VERTEX_ADD_LABEL) {
+              if (it != vertex->labels.end()) throw RecoveryFailure("The vertex already has the label!");
+              vertex->labels.push_back(label_id);
+            } else {
+              if (it == vertex->labels.end()) throw RecoveryFailure("The vertex doesn't have the label!");
+              std::swap(*it, vertex->labels.back());
+              vertex->labels.pop_back();
+            }
           } else {
-            if (it == vertex->labels.end()) throw RecoveryFailure("The vertex doesn't have the label!");
-            std::swap(*it, vertex->labels.back());
-            vertex->labels.pop_back();
+            if (vertex->has_vt>=0)
+              vertex->has_vt ++;
+
+            if (vertex->has_vt) {
+              if (delta.type == WalDeltaData::Type::VERTEX_ADD_LABEL) {
+                vertex->vt_store.SetLabel(*it, delta.vt);
+
+                if (it == vertex->labels.end())
+                  vertex->labels.push_back(label_id);
+              } else {
+                vertex->vt_store.DeleteLabel(*it, delta.vt);
+
+                if (!vertex->vt_store.HasLabel(*it)) {
+                  if (it == vertex->labels.end()) throw RecoveryFailure("The vertex doesn't have the label!");
+                  std::swap(*it, vertex->labels.back());
+                  vertex->labels.pop_back();
+                }
+              }
+            }
           }
 
           break;
@@ -696,10 +774,21 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
           auto vertex = vertex_acc.find(delta.vertex_edge_set_property.gid);
           if (vertex == vertex_acc.end()) throw RecoveryFailure("The vertex doesn't exist!");
 
+
           auto property_id = PropertyId::FromUint(name_id_mapper->NameToId(delta.vertex_edge_set_property.property));
           auto &property_value = delta.vertex_edge_set_property.value;
 
           vertex->properties.SetProperty(property_id, property_value);
+
+          if (vertex->has_vt || !delta.vt.whole()) {
+            if (vertex->has_vt >= 0)
+              vertex->has_vt++;
+
+            if (vertex->has_vt) {
+              vertex->vt_store.SetProperty(property_id, property_value, delta.vt);
+            }
+
+          }
 
           break;
         }
@@ -712,28 +801,61 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
           auto edge_gid = delta.edge_create_delete.gid;
           auto edge_type_id = EdgeTypeId::FromUint(name_id_mapper->NameToId(delta.edge_create_delete.edge_type));
           EdgeRef edge_ref(edge_gid);
+
+          bool treat_as_vt = from_vertex->has_vt || to_vertex->has_vt || !delta.vt.whole();
+          bool inserted_now = false;
           if (items.properties_on_edges) {
             auto [edge, inserted] = edge_acc.insert(Edge{edge_gid, nullptr});
-            if (!inserted) throw RecoveryFailure("The edge must be inserted here!");
+            if (!inserted && !treat_as_vt) throw RecoveryFailure("The edge must be inserted here!");
             edge_ref = EdgeRef(&*edge);
+
+            inserted_now = inserted;
+
+            if (treat_as_vt) {
+              if (edge->has_vt >= 0)
+                edge->has_vt++;
+              if (edge->has_vt) {
+                edge->vt_store.CreateObject(delta.vt);
+              }
+            }
           }
           {
             std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{edge_type_id, &*to_vertex, edge_ref};
             auto it = std::find(from_vertex->out_edges.begin(), from_vertex->out_edges.end(), link);
-            if (it != from_vertex->out_edges.end()) throw RecoveryFailure("The from vertex already has this edge!");
-            from_vertex->out_edges.push_back(link);
+            if (it != from_vertex->out_edges.end() && !treat_as_vt) throw RecoveryFailure("The from vertex already has this edge!");
+            if (it == from_vertex->out_edges.end())
+              from_vertex->out_edges.push_back(link);
+
+            if (treat_as_vt) {
+              if (from_vertex->has_vt >= 0)
+                from_vertex->has_vt++;
+              if (from_vertex->has_vt) {
+                  from_vertex->vt_store.SetOutgoingEdge(link, delta.vt);
+              }
+            }
           }
           {
             std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{edge_type_id, &*from_vertex, edge_ref};
             auto it = std::find(to_vertex->in_edges.begin(), to_vertex->in_edges.end(), link);
-            if (it != to_vertex->in_edges.end()) throw RecoveryFailure("The to vertex already has this edge!");
-            to_vertex->in_edges.push_back(link);
+            if (it != to_vertex->in_edges.end() && !treat_as_vt) throw RecoveryFailure("The to vertex already has this edge!");
+            if (it == to_vertex->in_edges.end())
+              to_vertex->in_edges.push_back(link);
+
+            if (treat_as_vt) {
+              if (to_vertex->has_vt >= 0)
+                to_vertex->has_vt++;
+              if (to_vertex->has_vt) {
+                to_vertex->vt_store.SetIngoingEdge(link, delta.vt);
+              }
+            }
           }
 
-          ret.next_edge_id = std::max(ret.next_edge_id, edge_gid.AsUint() + 1);
+          if (inserted_now) {
+            ret.next_edge_id = std::max(ret.next_edge_id, edge_gid.AsUint() + 1);
 
-          // Increment edge count.
-          edge_count->fetch_add(1, std::memory_order_acq_rel);
+            // Increment edge count.
+            edge_count->fetch_add(1, std::memory_order_acq_rel);
+          }
 
           break;
         }
@@ -746,31 +868,83 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
           auto edge_gid = delta.edge_create_delete.gid;
           auto edge_type_id = EdgeTypeId::FromUint(name_id_mapper->NameToId(delta.edge_create_delete.edge_type));
           EdgeRef edge_ref(edge_gid);
+
+          bool treat_as_vt = from_vertex->has_vt || to_vertex->has_vt || !delta.vt.whole();
+          bool removed_now = false;
+
           if (items.properties_on_edges) {
             auto edge = edge_acc.find(edge_gid);
             if (edge == edge_acc.end()) throw RecoveryFailure("The edge doesn't exist!");
             edge_ref = EdgeRef(&*edge);
+
+            if (treat_as_vt) {
+              if (edge->has_vt >= 0)
+                edge->has_vt++;
+              if (edge->has_vt) {
+                edge->vt_store.DeleteObject(delta.vt);
+              }
+            }
           }
           {
             std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{edge_type_id, &*to_vertex, edge_ref};
             auto it = std::find(from_vertex->out_edges.begin(), from_vertex->out_edges.end(), link);
             if (it == from_vertex->out_edges.end()) throw RecoveryFailure("The from vertex doesn't have this edge!");
-            std::swap(*it, from_vertex->out_edges.back());
-            from_vertex->out_edges.pop_back();
+            if (treat_as_vt) {
+              if (from_vertex->has_vt >= 0)
+                from_vertex->has_vt++;
+              if (from_vertex->has_vt) {
+                from_vertex->vt_store.DeleteOutgoingEdge(link,delta.vt);
+                if (!from_vertex->vt_store.HasOutgoingEdge(link)) {
+                  std::swap(*it, from_vertex->out_edges.back());
+                  from_vertex->out_edges.pop_back();
+                  removed_now = true;
+                }
+              }
+            }else {
+              std::swap(*it, from_vertex->out_edges.back());
+              from_vertex->out_edges.pop_back();
+              removed_now = true;
+            }
           }
           {
             std::tuple<EdgeTypeId, Vertex *, EdgeRef> link{edge_type_id, &*from_vertex, edge_ref};
             auto it = std::find(to_vertex->in_edges.begin(), to_vertex->in_edges.end(), link);
             if (it == to_vertex->in_edges.end()) throw RecoveryFailure("The to vertex doesn't have this edge!");
-            std::swap(*it, to_vertex->in_edges.back());
-            to_vertex->in_edges.pop_back();
+            if (treat_as_vt) {
+              if (to_vertex->has_vt >= 0)
+                to_vertex->has_vt++;
+              if (to_vertex->has_vt) {
+                to_vertex->vt_store.DeleteIngoingEdge(link,delta.vt);
+                if (!to_vertex->vt_store.HasIngoingEdge(link)) {
+                  std::swap(*it, to_vertex->in_edges.back());
+                  to_vertex->in_edges.pop_back();
+                  removed_now = true;
+                }
+              }
+            }else {
+              std::swap(*it, to_vertex->in_edges.back());
+              to_vertex->in_edges.pop_back();
+              removed_now = true;
+            }
+
           }
           if (items.properties_on_edges) {
-            if (!edge_acc.remove(edge_gid)) throw RecoveryFailure("The edge must be removed here!");
+            if (!treat_as_vt) {
+              if (!edge_acc.remove(edge_gid))
+                throw RecoveryFailure("The edge must be removed here!");
+              removed_now = true;
+            } else {
+              if (!edge_ref.ptr->vt_store.IsValid()) {
+                if (!edge_acc.remove(edge_gid))
+                  throw RecoveryFailure("The edge must be removed here!");
+                removed_now = true;
+              }
+            }
           }
 
           // Decrement edge count.
-          edge_count->fetch_add(-1, std::memory_order_acq_rel);
+          if (removed_now)
+            edge_count->fetch_add(-1, std::memory_order_acq_rel);
 
           break;
         }
@@ -784,6 +958,17 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
           auto property_id = PropertyId::FromUint(name_id_mapper->NameToId(delta.vertex_edge_set_property.property));
           auto &property_value = delta.vertex_edge_set_property.value;
           edge->properties.SetProperty(property_id, property_value);
+
+          if (edge->has_vt || !delta.vt.whole()) {
+            if (edge->has_vt >= 0)
+              edge->has_vt++;
+
+            if (edge->has_vt) {
+              edge->vt_store.SetProperty(property_id, property_value, delta.vt);
+            }
+
+          }
+
           break;
         }
         case WalDeltaData::Type::TRANSACTION_END:

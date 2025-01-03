@@ -38,6 +38,8 @@ enum class Marker : uint8_t {
   SECTION_DELTA = 0x26,
   SECTION_EPOCH_HISTORY = 0x27,
   SECTION_OFFSETS = 0x42,
+  SECTION_VTSTORE = 0x43,
+
 
   DELTA_VERTEX_CREATE = 0x50,
   DELTA_VERTEX_DELETE = 0x51,
@@ -56,6 +58,12 @@ enum class Marker : uint8_t {
   DELTA_EXISTENCE_CONSTRAINT_DROP = 0x5e,
   DELTA_UNIQUE_CONSTRAINT_CREATE = 0x5f,
   DELTA_UNIQUE_CONSTRAINT_DROP = 0x60,
+
+  VTSTORE_OBJECT_VALIDITY = 0x70,
+  VTSTORE_IN_EDGE = 0x71,
+  VTSTORE_OUT_EDGE = 0x72,
+  VTSTORE_PROPERTY = 0x73,
+  VTSTORE_END = 0x74,
 
   VALUE_FALSE = 0x00,
   VALUE_TRUE = 0xff,
@@ -82,6 +90,7 @@ static const Marker kMarkersAll[] = {
     Marker::SECTION_DELTA,
     Marker::SECTION_EPOCH_HISTORY,
     Marker::SECTION_OFFSETS,
+    Marker::SECTION_VTSTORE,
     Marker::DELTA_VERTEX_CREATE,
     Marker::DELTA_VERTEX_DELETE,
     Marker::DELTA_VERTEX_ADD_LABEL,
@@ -101,6 +110,11 @@ static const Marker kMarkersAll[] = {
     Marker::DELTA_UNIQUE_CONSTRAINT_DROP,
     Marker::VALUE_FALSE,
     Marker::VALUE_TRUE,
+    Marker::VTSTORE_OBJECT_VALIDITY,
+    Marker::VTSTORE_IN_EDGE,
+    Marker::VTSTORE_OUT_EDGE,
+    Marker::VTSTORE_PROPERTY,
+    Marker::VTSTORE_END,
 };
 
 }  // namespace storage::durability

@@ -46,6 +46,9 @@ namespace storage::durability {
 //    in the following format:
 //     * gid
 //     * properties
+//     * VTstore:
+//        * object validity
+//        * properties
 //
 // 5) Encoded vertices; each vertex is written in the following format:
 //     * gid
@@ -59,6 +62,11 @@ namespace storage::durability {
 //         * edge gid
 //         * to vertex gid
 //         * edge type
+//     * VTstore:
+//        * object validity
+//        * ingoing edges
+//        * outgoing edges
+//        * properties
 //
 // 6) Indices
 //     * label indices
@@ -253,9 +261,12 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
           auto from_gid = Gid::FromUint(*(snapshot.ReadUint()));
           auto to_gid = Gid::FromUint(*(snapshot.ReadUint()));
           //hjm end
+          auto has_vt = snapshot.ReadUint();
           // auto [it, inserted] = edge_acc.insert(Edge{Gid::FromUint(*gid), nullptr});
           auto [it, inserted] = edge_acc.insert(Edge{Gid::FromUint(*gid), nullptr,*tt_ts,from_gid,to_gid});
           if (!inserted) throw RecoveryFailure("The edge must be inserted here!");
+
+          it->has_vt = utils::MemcpyCast<int64_t>(*has_vt);
 
           // Recover properties.
           {
@@ -271,6 +282,40 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
                            name_id_mapper->IdToName(snapshot_id_map.at(*key)), *value, *gid);
               props.SetProperty(get_property_from_id(*key), *value);
             }
+          }
+          // Recover VTStore
+          {
+            auto vtstore_marker = snapshot.ReadMarker();
+            if (!vtstore_marker || *vtstore_marker != Marker::SECTION_VTSTORE) throw RecoveryFailure("Invalid snapshot data!");
+            auto next_marker = snapshot.ReadMarker();
+            if (!next_marker) throw RecoveryFailure("Invalid snapshot data!");
+
+            VtStore& vt_store = it->vt_store;
+            while (*next_marker != Marker::VTSTORE_END) {
+              switch (*next_marker) {
+                case Marker::VTSTORE_OBJECT_VALIDITY: {
+                  vt_store.DeserializeIntoValidity(&snapshot);
+                  break;
+                }
+                case Marker::VTSTORE_PROPERTY: {
+                  auto property_id = snapshot.ReadUint();
+                  if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
+                  vt_store.DeserializeIntoProperty(&snapshot, get_property_from_id(*property_id));
+                  break;
+                }
+                case Marker::VTSTORE_END: {
+                  break;
+                }
+                default:
+                  throw RecoveryFailure("Invalid snapshot data!");
+              }
+
+              if (*next_marker != Marker::VTSTORE_END) {
+                next_marker = snapshot.ReadMarker();
+              }
+            }
+
+
           }
 
         } else {
@@ -318,8 +363,13 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
       //hjm begin 
       auto tt_ts = snapshot.ReadUint();
       //hjm end
+      auto has_vt = snapshot.ReadUint();
+      if (!has_vt) throw RecoveryFailure("Invalid snapshot data!");
+
       auto [it, inserted] = vertex_acc.insert(Vertex{Gid::FromUint(*gid), nullptr,*tt_ts});
       if (!inserted) throw RecoveryFailure("The vertex must be inserted here!");
+
+      it->has_vt = utils::MemcpyCast<int64_t>(*has_vt);
 
       // Recover labels.
       spdlog::trace("Recovering labels for vertex {}.", *gid);
@@ -378,6 +428,62 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
         if (!to_gid) throw RecoveryFailure("Invalid snapshot data!");
         auto edge_type = snapshot.ReadUint();
         if (!edge_type) throw RecoveryFailure("Invalid snapshot data!");
+      }
+
+      // Recover/Skip VtStore.
+      {
+        auto vtstore_marker = snapshot.ReadMarker();
+        if (!vtstore_marker || *vtstore_marker != Marker::SECTION_VTSTORE) throw RecoveryFailure("Invalid snapshot data!");
+        auto next_marker = snapshot.ReadMarker();
+        if (!next_marker) throw RecoveryFailure("Invalid snapshot data!");
+
+        VtStore& vt_store = it->vt_store;
+        while (*next_marker != Marker::VTSTORE_END) {
+          switch (*next_marker) {
+            case Marker::VTSTORE_OBJECT_VALIDITY: {
+              vt_store.DeserializeIntoValidity(&snapshot);
+              break;
+            }
+            case Marker::VTSTORE_IN_EDGE: {
+              auto edgetype_id = snapshot.ReadUint();
+              if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
+              auto vertexto_gid = snapshot.ReadUint();
+              if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
+              auto edge_gid = snapshot.ReadUint();
+              if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
+
+              vt_store.DeserializeIntoInEdges(&snapshot, std::nullopt);
+              break;
+            }
+            case Marker::VTSTORE_OUT_EDGE: {
+              auto edgetype_id = snapshot.ReadUint();
+              if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
+              auto vertexto_gid = snapshot.ReadUint();
+              if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
+              auto edge_gid = snapshot.ReadUint();
+              if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
+
+              vt_store.DeserializeIntoOutEdges(&snapshot, std::nullopt);
+              break;
+            }
+            case Marker::VTSTORE_PROPERTY: {
+              auto property_id = snapshot.ReadUint();
+              if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
+              vt_store.DeserializeIntoProperty(&snapshot, get_property_from_id(*property_id));
+              break;
+            }
+            case Marker::VTSTORE_END: {
+              break;
+            }
+            default:
+              throw RecoveryFailure("Invalid snapshot data!");
+          }
+
+          if (*next_marker != Marker::VTSTORE_END) {
+            next_marker = snapshot.ReadMarker();
+          }
+        }
+
       }
     }
     spdlog::info("Vertices are recovered.");
@@ -495,6 +601,95 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
         // Increment edge count. We only increment the count here because the
         // information is duplicated in in_edges.
         edge_count->fetch_add(*out_size, std::memory_order_acq_rel);
+      }
+
+      //Recover edges from VTStore
+      {
+        auto vtstore_marker = snapshot.ReadMarker();
+        if (!vtstore_marker || *vtstore_marker != Marker::SECTION_VTSTORE) throw RecoveryFailure("Invalid snapshot data!");
+        auto next_marker = snapshot.ReadMarker();
+        if (!next_marker) throw RecoveryFailure("Invalid snapshot data!");
+
+        VtStore& vt_store = vertex.vt_store;
+        while (*next_marker != Marker::VTSTORE_END) {
+          switch (*next_marker) {
+            case Marker::VTSTORE_OBJECT_VALIDITY: {
+              //Reimport validity(in theory, low time-cost operation)
+              vt_store.DeserializeIntoValidity(&snapshot);
+              break;
+            }
+            case Marker::VTSTORE_IN_EDGE: {
+              auto edgetype_id = snapshot.ReadUint();
+              if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
+              auto vertexfrom_gid = snapshot.ReadUint();
+              if (!vertexfrom_gid) throw RecoveryFailure("Invalid snapshot data!");
+              auto edge_gid = snapshot.ReadUint();
+              if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
+
+              auto from_vertex = vertex_acc.find(Gid::FromUint(*vertexfrom_gid));
+              if (from_vertex == vertex_acc.end()) throw RecoveryFailure("Invalid from vertex!");
+
+              EdgeRef edge_ref(Gid::FromUint(*edge_gid));
+              if (items.properties_on_edges) {
+                if (snapshot_has_edges) {
+                  auto edge = edge_acc.find(Gid::FromUint(*edge_gid));
+                  if (edge == edge_acc.end()) throw RecoveryFailure("Invalid edge!");
+                  edge_ref = EdgeRef(&*edge);
+                } else {
+                  auto [edge, inserted] = edge_acc.insert(Edge{Gid::FromUint(*edge_gid), nullptr});
+                  edge_ref = EdgeRef(&*edge);
+                }
+              }
+
+              vt_store.DeserializeIntoInEdges(&snapshot, std::make_tuple(get_edge_type_from_id(*edgetype_id), &*from_vertex, edge_ref));
+              break;
+            }
+            case Marker::VTSTORE_OUT_EDGE: {
+              auto edgetype_id = snapshot.ReadUint();
+              if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
+              auto vertexto_gid = snapshot.ReadUint();
+              if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
+              auto edge_gid = snapshot.ReadUint();
+              if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
+
+              auto to_vertex = vertex_acc.find(Gid::FromUint(*vertexto_gid));
+              if (to_vertex == vertex_acc.end()) throw RecoveryFailure("Invalid to vertex!");
+
+              EdgeRef edge_ref(Gid::FromUint(*edge_gid));
+              if (items.properties_on_edges) {
+                if (snapshot_has_edges) {
+                  auto edge = edge_acc.find(Gid::FromUint(*edge_gid));
+                  if (edge == edge_acc.end()) throw RecoveryFailure("Invalid edge!");
+                  edge_ref = EdgeRef(&*edge);
+                } else {
+                  auto [edge, inserted] = edge_acc.insert(Edge{Gid::FromUint(*edge_gid), nullptr});
+                  edge_ref = EdgeRef(&*edge);
+                }
+              }
+
+              vt_store.DeserializeIntoOutEdges(&snapshot, std::make_tuple(get_edge_type_from_id(*edgetype_id), &*to_vertex, edge_ref));
+              break;
+            }
+            case Marker::VTSTORE_PROPERTY: {
+              //Skip properties
+              auto property_id = snapshot.ReadUint();
+              if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
+              vt_store.DeserializeIntoProperty(&snapshot, std::nullopt);
+              break;
+            }
+            case Marker::VTSTORE_END: {
+              break;
+            }
+            default:
+              throw RecoveryFailure("Invalid snapshot data!");
+          }
+
+          if (*next_marker != Marker::VTSTORE_END) {
+            next_marker = snapshot.ReadMarker();
+          }
+        }
+
+
       }
     }
     spdlog::info("Connectivity is recovered.");
@@ -709,26 +904,52 @@ void CreateSnapshot(Transaction *transaction, const std::filesystem::path &snaps
         is_visible = !edge.deleted;
         delta = edge.delta;
       }
-      ApplyDeltasForRead(transaction, delta, View::OLD, [&is_visible](const Delta &delta) {
-        switch (delta.action) {
-          case Delta::Action::ADD_LABEL:
-          case Delta::Action::REMOVE_LABEL:
-          case Delta::Action::SET_PROPERTY:
-          case Delta::Action::ADD_IN_EDGE:
-          case Delta::Action::ADD_OUT_EDGE:
-          case Delta::Action::REMOVE_IN_EDGE:
-          case Delta::Action::REMOVE_OUT_EDGE:
-            break;
-          case Delta::Action::RECREATE_OBJECT: {
-            is_visible = true;
-            break;
+      if (edge.has_vt == 0) {
+        ApplyDeltasForRead(transaction, delta, View::OLD, [&is_visible](const Delta &delta) {
+          switch (delta.action) {
+            case Delta::Action::ADD_LABEL:
+            case Delta::Action::REMOVE_LABEL:
+            case Delta::Action::SET_PROPERTY:
+            case Delta::Action::ADD_IN_EDGE:
+            case Delta::Action::ADD_OUT_EDGE:
+            case Delta::Action::REMOVE_IN_EDGE:
+            case Delta::Action::REMOVE_OUT_EDGE:
+              break;
+            case Delta::Action::RECREATE_OBJECT: {
+              is_visible = true;
+              break;
+            }
+            case Delta::Action::DELETE_OBJECT: {
+              is_visible = false;
+              break;
+            }
           }
-          case Delta::Action::DELETE_OBJECT: {
-            is_visible = false;
-            break;
+        });
+      }else {
+        utils::timeline validity = edge.vt_store.GetObjectValidity(utils::TimeSpan());
+        ApplyDeltasForRead(transaction, delta, View::OLD, utils::TemporalFilter(), [&validity](const Delta &delta, utils::TimeSpan vt_intersect) {
+          switch (delta.action) {
+            case Delta::Action::ADD_LABEL:
+            case Delta::Action::REMOVE_LABEL:
+            case Delta::Action::SET_PROPERTY:
+            case Delta::Action::ADD_IN_EDGE:
+            case Delta::Action::ADD_OUT_EDGE:
+            case Delta::Action::REMOVE_IN_EDGE:
+            case Delta::Action::REMOVE_OUT_EDGE:
+              break;
+            case Delta::Action::RECREATE_OBJECT: {
+              validity.add(vt_intersect);
+              break;
+            }
+            case Delta::Action::DELETE_OBJECT: {
+              validity.remove(vt_intersect);
+              break;
+            }
           }
-        }
-      });
+        });
+        is_visible = validity.has_any();
+      }
+
       if (!is_visible) continue;
       EdgeRef edge_ref(&edge);
       // Here we create an edge accessor that we will use to get the
@@ -753,12 +974,14 @@ void CreateSnapshot(Transaction *transaction, const std::filesystem::path &snaps
         snapshot.WriteUint(edge.from_gid.AsUint());
         snapshot.WriteUint(edge.to_gid.AsUint());
         //hjm end
+        snapshot.WriteUint(utils::MemcpyCast<uint64_t>(static_cast<int64_t>(edge.has_vt)));
         const auto &props = maybe_props.GetValue();
         snapshot.WriteUint(props.size());
         for (const auto &item : props) {
           write_mapping(item.first);
           snapshot.WritePropertyValue(item.second);
         }
+        snapshot.WriteVtStore(edge.vt_store);
       }
 
       ++edges_count;
@@ -794,6 +1017,7 @@ void CreateSnapshot(Transaction *transaction, const std::filesystem::path &snaps
         if(prinfFlag) ofs_vertex<<std::to_string(vertex.gid.AsUint())<<"####"<<std::to_string(vertex.transaction_st)<<"\n";
         snapshot.WriteUint(vertex.transaction_st);
         //hjm end
+        snapshot.WriteUint(utils::MemcpyCast<uint64_t>(static_cast<int64_t>(vertex.has_vt)));
         const auto &labels = maybe_labels.GetValue();
         snapshot.WriteUint(labels.size());
         for (const auto &item : labels) {
@@ -819,6 +1043,7 @@ void CreateSnapshot(Transaction *transaction, const std::filesystem::path &snaps
           snapshot.WriteUint(item.ToVertex().Gid().AsUint());
           write_mapping(item.EdgeType());
         }
+        snapshot.WriteVtStore(vertex.vt_store);
       }
 
       ++vertices_count;

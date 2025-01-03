@@ -56,6 +56,8 @@ class Encoder final : public BaseEncoder {
   void WriteDouble(double value) override;
   void WriteString(const std::string_view &value) override;
   void WritePropertyValue(const PropertyValue &value) override;
+  void WriteVtStore(const VtStore &value) ;
+
 
   uint64_t GetPosition();
   void SetPosition(uint64_t position);

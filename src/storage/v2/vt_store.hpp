@@ -13,9 +13,17 @@
 #include "property_value.hpp"
 #include "utils/timespan.hpp"
 
+
+
 namespace storage {
+  namespace durability {
+    class BaseEncoder;
+    class BaseDecoder;
+  }
 
   struct Vertex;
+  class Storage;
+
 
   inline auto EdgeStoreType_Compare = [](const std::tuple<EdgeTypeId, Vertex *, EdgeRef> &lhs, const std::tuple<EdgeTypeId, Vertex *, EdgeRef> &rhs) -> int {
 
@@ -166,6 +174,10 @@ public:
   /// @throw std::bad_alloc
   bool DeleteObject();
 
+  /// Returns a bool "true" if this graph object exists at least onece
+  ///  The time complexity of this function is O(1).
+  bool IsValid() const;
+
   //// Returns an interval which contains "true" for every vt in between the utils::TimeSpan 'vt' so that
   /// the label "label" exists in that period. The time complexity of
   /// this function is O(n).
@@ -202,6 +214,14 @@ public:
   /// complexity of this function is O(1).
   /// @throw std::bad_alloc
   bool DeleteLabel(LabelId label, const utils::TimeSpan& vt);
+
+  void SerializeToWriter(durability::BaseEncoder* encoder) const;
+  std::map<std::string,std::string> SerializeToStrings() const;
+
+  void DeserializeIntoValidity(durability::BaseDecoder* decoder);
+  void DeserializeIntoInEdges(durability::BaseDecoder* decoder, std::optional<EdgeStoreType> edge);
+  void DeserializeIntoOutEdges(durability::BaseDecoder* decoder, std::optional<EdgeStoreType> edge);
+  void DeserializeIntoProperty(durability::BaseDecoder* decoder, std::optional<PropertyId> property);
 
   using TimelineList = std::vector<utils::TimeSpan>;
   using ValuedTimeline = std::vector<std::pair<utils::TimeSpan, PropertyValue>>;

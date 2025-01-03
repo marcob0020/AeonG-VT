@@ -102,6 +102,8 @@ struct WalDeltaData {
     std::string label;
     std::set<std::string> properties;
   } operation_label_properties;
+
+  utils::TimeSpan vt;
 };
 
 bool operator==(const WalDeltaData &a, const WalDeltaData &b);

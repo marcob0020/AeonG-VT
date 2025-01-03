@@ -131,6 +131,10 @@ void Encoder::WritePropertyValue(const PropertyValue &value) {
   }
 }
 
+void Encoder::WriteVtStore(const VtStore &value) {
+  value.SerializeToWriter(this);
+}
+
 uint64_t Encoder::GetPosition() { return file_.GetPosition(); }
 
 void Encoder::SetPosition(uint64_t position) { file_.SetPosition(utils::OutputFile::Position::SET, position); }
@@ -352,6 +356,12 @@ std::optional<PropertyValue> Decoder::ReadPropertyValue() {
     case Marker::DELTA_UNIQUE_CONSTRAINT_DROP:
     case Marker::VALUE_FALSE:
     case Marker::VALUE_TRUE:
+    case Marker::VTSTORE_END:
+    case Marker::VTSTORE_PROPERTY:
+    case Marker::VTSTORE_IN_EDGE:
+    case Marker::VTSTORE_OUT_EDGE:
+    case Marker::SECTION_VTSTORE:
+    case Marker::VTSTORE_OBJECT_VALIDITY:
       return std::nullopt;
   }
 }
@@ -451,6 +461,12 @@ bool Decoder::SkipPropertyValue() {
     case Marker::DELTA_UNIQUE_CONSTRAINT_DROP:
     case Marker::VALUE_FALSE:
     case Marker::VALUE_TRUE:
+    case Marker::VTSTORE_END:
+    case Marker::VTSTORE_PROPERTY:
+    case Marker::VTSTORE_IN_EDGE:
+    case Marker::VTSTORE_OUT_EDGE:
+    case Marker::SECTION_VTSTORE:
+    case Marker::VTSTORE_OBJECT_VALIDITY:
       return false;
   }
 }

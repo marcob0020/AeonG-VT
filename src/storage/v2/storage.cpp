@@ -3427,12 +3427,15 @@ void Storage::CollectGarbage() {
       uint64_t ts=key.second;
       nlohmann::json data = nlohmann::json::object();
       nlohmann::json data2 = nlohmann::json::object();
+      nlohmann::json data3 = nlohmann::json::object();
 
       for (const auto &[prop_id, prop_value] : maybe_properties) {
         const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
         auto property_value = SerializePropertyValue(prop_value);//query::serialization::
         data2[property_name] = property_value;
       }
+
+      for (const auto []: )
 
       data["SP"]=data2;
       auto prefix=history_delta::HistoryDelta::getPrefix(gid,ts,false);
