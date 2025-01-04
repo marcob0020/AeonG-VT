@@ -21,8 +21,6 @@
 
 #include "storage/v2/history_delta.hpp"
 
-#include <gflags/gflags.h>
-
 #include "io/network/endpoint.hpp"
 #include "storage/v2/durability/durability.hpp"
 #include "storage/v2/durability/metadata.hpp"
@@ -50,9 +48,7 @@
 
 #include "storage/v2/replication/replication_client.hpp"
 #include "storage/v2/replication/replication_server.hpp"
-#include "storage/v2/replication/rpc.hpp"
 
-#include "query/serialization/property_value.hpp"
 #include "storage/v2/history_vertex.hpp"
 
 namespace storage {
@@ -3411,6 +3407,8 @@ void Storage::CollectGarbage() {
     std::list<std::pair<uint64_t, std::list<Delta>>> saved_buffers;
     std::list<std::tuple<Gid,uint64_t,uint64_t>> saved_gids;
 
+
+
     for (Delta &a : transaction->deltas){
       uint64_t start=a.transaction_st;
       uint64_t commit=a.commit_timestamp;
@@ -3422,51 +3420,80 @@ void Storage::CollectGarbage() {
 
     std::map<std::string, std::string> gid_anchor_all_;
     // std::cout<<"commit after:"<<transaction->transaction_id<<" "<<transaction->gid_anchor_edge_.size()<<" "<<transaction->gid_anchor_all_.size()<<"\n";
-    for(const auto& [key,maybe_properties]:transaction->gid_anchor_edge_){
-      Gid gid=key.first;
-      uint64_t ts=key.second;
-      nlohmann::json data = nlohmann::json::object();
-      nlohmann::json data2 = nlohmann::json::object();
-      nlohmann::json data3 = nlohmann::json::object();
+    {
+      auto edge_acc = edges_.access();
+      for(const auto& [key,maybe_properties]:transaction->gid_anchor_edge_){
+        Gid gid=key.first;
+        uint64_t ts=key.second;
+        uint64_t has_vt = 0;
+        nlohmann::json data = nlohmann::json::object();
+        nlohmann::json data2 = nlohmann::json::object();
+        nlohmann::json data3 = nlohmann::json::object();
 
-      for (const auto &[prop_id, prop_value] : maybe_properties) {
-        const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
-        auto property_value = SerializePropertyValue(prop_value);//query::serialization::
-        data2[property_name] = property_value;
+        for (const auto &[prop_id, prop_value] : maybe_properties) {
+          const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
+          auto property_value = SerializePropertyValue(prop_value);//query::serialization::
+          data2[property_name] = property_value;
+        }
+
+        auto edge = edge_acc.find(gid);
+        if (edge != edge_acc.end()) {
+          auto parts = edge->vt_store.SerializeToStrings();
+          for (const auto& [key, value]: parts) {
+            data3[key] = value;
+          }
+          has_vt = utils::MemcpyCast<uint64_t>(static_cast<int64_t>(edge->has_vt)) ;
+        }
+
+        data["SP"]=data2;
+        data["VTS"]=data3;
+        data["HVT"]=has_vt;
+        auto prefix=history_delta::HistoryDelta::getPrefix(gid,ts,false);
+        gid_anchor_all_[prefix]=data.dump();
       }
-
-      for (const auto []: )
-
-      data["SP"]=data2;
-      auto prefix=history_delta::HistoryDelta::getPrefix(gid,ts,false);
-      gid_anchor_all_[prefix]=data.dump();
     }
 
-    for(const auto& [key,values]:transaction->gid_anchor_vertex_){
-      Gid gid=key.first;
-      uint64_t ts=key.second;
-      nlohmann::json data = nlohmann::json::object();
+    {
+      auto vertex_acc = vertices_.access();
+      for(const auto& [key,values]:transaction->gid_anchor_vertex_){
+        Gid gid=key.first;
+        uint64_t ts=key.second;
+        nlohmann::json data = nlohmann::json::object();
 
-      const std::map<PropertyId,PropertyValue>& maybe_properties=values.first;
-      const std::vector<LabelId>& maybe_labels=values.second;
-      nlohmann::json data2 = nlohmann::json::object();
+        const std::map<PropertyId,PropertyValue>& maybe_properties=values.first;
+        const std::vector<LabelId>& maybe_labels=values.second;
+        nlohmann::json data2 = nlohmann::json::object();
+        nlohmann::json data3 = nlohmann::json::object();
+        uint64_t has_vt = 0;
 
-      for (const auto &[prop_id, prop_value] : maybe_properties) {
-        const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
-        auto property_value = SerializePropertyValue(prop_value);//query::serialization::
-        data2[property_name] = property_value;
+        for (const auto &[prop_id, prop_value] : maybe_properties) {
+          const std::string& property_name = name_id_mapper_.IdToName(prop_id.AsUint());//delta.property.key.AsUint();//
+          auto property_value = SerializePropertyValue(prop_value);//query::serialization::
+          data2[property_name] = property_value;
+        }
+        data["SP"]=data2;
+
+        auto add_labels=std::vector<std::pair<std::string,std::string>>();
+        for (const auto &label : maybe_labels) {
+          add_labels.emplace_back("AL",name_id_mapper_.IdToName(label.AsUint()));//name_id_mapper_.IdToName(label.AsUint())
+        }
+
+        data["L"] =add_labels;
+
+        auto vertex = vertex_acc.find(gid);
+        if (vertex != vertex_acc.end()) {
+          auto parts = vertex->vt_store.SerializeToStrings();
+          for (const auto& [key, value]: parts) {
+            data3[key] = value;
+          }
+          has_vt = utils::MemcpyCast<uint64_t>(static_cast<int64_t>(vertex->has_vt)) ;
+        }
+        data["VTS"] = data3;
+        data["HVT"] = has_vt;
+
+        std::string prefix=saved_history_deltas_->getPrefix(gid,ts,true);
+        gid_anchor_all_[prefix]=data.dump();
       }
-      data["SP"]=data2;
-
-      auto add_labels=std::vector<std::pair<std::string,std::string>>();
-      for (const auto &label : maybe_labels) {
-        add_labels.emplace_back("AL",name_id_mapper_.IdToName(label.AsUint()));//name_id_mapper_.IdToName(label.AsUint())
-      }
-
-      data["L"] =add_labels;
-
-      std::string prefix=saved_history_deltas_->getPrefix(gid,ts,true);
-      gid_anchor_all_[prefix]=data.dump();
     }
     
     //hjm begin prinf edge

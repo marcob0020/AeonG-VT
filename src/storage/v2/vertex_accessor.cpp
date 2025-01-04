@@ -732,6 +732,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   utils::MemoryTracker::OutOfMemoryExceptionEnabler oom_exception;
   std::lock_guard<utils::SpinLock> guard(vertex_->lock);
 
+
   if (!PrepareForWrite(transaction_, vertex_)) return Error::SERIALIZATION_ERROR;
 
   if (vertex_->deleted) return Error::DELETED_OBJECT;
