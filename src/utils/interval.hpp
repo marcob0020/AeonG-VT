@@ -50,6 +50,7 @@ class timeline {
 
     bool get_single(TimeSpan from_to) const ;
     bool get_first(VTDateTime from) const ;
+
     bool is_single(TimeSpan from_to) const ;
     bool has_any();
 
@@ -116,6 +117,7 @@ public:
 
   T get_single(TimeSpan from_to) const ;
   T get_first(VTDateTime from) const ;
+  T get_first(TimeSpan from_to) const ;
   bool is_single(TimeSpan from_to) const ;
   bool has_any();
 

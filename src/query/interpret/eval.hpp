@@ -382,7 +382,7 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
       case TypedValue::Type::Vertex: {
         const auto &vertex = expression_result.ValueVertex();
         for (const auto &label : labels_test.labels_) {
-          auto has_label = vertex.HasLabel(view_, GetLabel(label));
+          auto has_label = vertex.HasLabel(view_, GetLabel(label), ctx_->vt);
           if (has_label.HasError() && has_label.GetError() == storage::Error::NONEXISTENT_OBJECT) {
             // This is a very nasty and temporary hack in order to make MERGE
             // work. The old storage had the following logic when returning an
@@ -391,7 +391,7 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
             // we simulate that behavior.
             // TODO (mferencevic, teon.banek): Remove once MERGE is
             // reimplemented.
-            has_label = vertex.HasLabel(storage::View::NEW, GetLabel(label));
+            has_label = vertex.HasLabel(storage::View::NEW, GetLabel(label), ctx_->vt);
           }
           if (has_label.HasError()) {
             switch (has_label.GetError()) {
@@ -715,7 +715,7 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
  private:
   template <class TRecordAccessor>
   storage::PropertyValue GetProperty(const TRecordAccessor &record_accessor, PropertyIx prop) {
-    auto maybe_prop = record_accessor.GetProperty(view_, ctx_->properties[prop.ix]);
+    auto maybe_prop = record_accessor.GetProperty(view_, ctx_->properties[prop.ix], ctx_->vt);
     if (maybe_prop.HasError() && maybe_prop.GetError() == storage::Error::NONEXISTENT_OBJECT) {
       // This is a very nasty and temporary hack in order to make MERGE work.
       // The old storage had the following logic when returning an `OLD` view:
@@ -723,7 +723,7 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
       // exist, it returned the NEW view. With this hack we simulate that
       // behavior.
       // TODO (mferencevic, teon.banek): Remove once MERGE is reimplemented.
-      maybe_prop = record_accessor.GetProperty(storage::View::NEW, ctx_->properties[prop.ix]);
+      maybe_prop = record_accessor.GetProperty(storage::View::NEW, ctx_->properties[prop.ix], ctx_->vt);
     }
     if (maybe_prop.HasError()) {
       switch (maybe_prop.GetError()) {
@@ -742,7 +742,7 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
 
   template <class TRecordAccessor>
   storage::PropertyValue GetProperty(const TRecordAccessor &record_accessor, const std::string_view &name) {
-    auto maybe_prop = record_accessor.GetProperty(view_, dba_->NameToProperty(name));
+    auto maybe_prop = record_accessor.GetProperty(view_, dba_->NameToProperty(name), ctx_->vt);
     if (maybe_prop.HasError() && maybe_prop.GetError() == storage::Error::NONEXISTENT_OBJECT) {
       // This is a very nasty and temporary hack in order to make MERGE work.
       // The old storage had the following logic when returning an `OLD` view:
@@ -750,7 +750,7 @@ class ExpressionEvaluator : public ExpressionVisitor<TypedValue> {
       // exist, it returned the NEW view. With this hack we simulate that
       // behavior.
       // TODO (mferencevic, teon.banek): Remove once MERGE is reimplemented.
-      maybe_prop = record_accessor.GetProperty(view_, dba_->NameToProperty(name));
+      maybe_prop = record_accessor.GetProperty(view_, dba_->NameToProperty(name), ctx_->vt);
     }
     if (maybe_prop.HasError()) {
       switch (maybe_prop.GetError()) {

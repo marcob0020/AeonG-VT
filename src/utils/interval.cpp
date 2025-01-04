@@ -140,6 +140,19 @@ namespace utils {
   }
 
   template<typename T>
+  T valued_timeline<T>::get_first(TimeSpan from_to) const {
+    auto it = seek(begin(), from_to.first);
+
+    if (it == std::nullopt || *it == end())
+      return T();
+
+    if ((*it)->first.overlaps(from_to))
+      return (*it)->second;
+
+    return T();
+  }
+
+  template<typename T>
   bool valued_timeline<T>::is_single(TimeSpan from_to) const {
     auto it = seek(begin(), from_to.first);
 

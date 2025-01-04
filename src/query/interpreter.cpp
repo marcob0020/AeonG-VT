@@ -1180,6 +1180,9 @@ PreparedQuery PrepareCypherQuery(ParsedQuery parsed_query, std::map<std::string,
     interpreter_context->vt = utils::TemporalFilter();
   }
 
+
+  evaluation_context.vt = *interpreter_context->vt;
+
   summary->insert_or_assign("cost_estimate", plan->cost());
   auto rw_type_checker = plan::ReadWriteTypeChecker();
   rw_type_checker.InferRWType(const_cast<plan::LogicalOperator &>(plan->plan()));
