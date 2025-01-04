@@ -2983,6 +2983,8 @@ bool SetProperty::SetPropertyCursor::Pull(Frame &frame, ExecutionContext &contex
 
   bool temporal = context.addition_vt.is_temporal();
 
+
+
   if (!input_cursor_->Pull(frame, context)) return false;
 
   // Set, just like Create needs to see the latest changes.
@@ -2995,6 +2997,7 @@ bool SetProperty::SetPropertyCursor::Pull(Frame &frame, ExecutionContext &contex
     case TypedValue::Type::Vertex: {
       auto old_value = temporal ? PropsSetChecked(&lhs.ValueVertex(), self_.property_, rhs, context.addition_vt) :  PropsSetChecked(&lhs.ValueVertex(), self_.property_, rhs);
       context.execution_stats[ExecutionStats::Key::UPDATED_PROPERTIES] += 1;
+      std::cout<<"temporal "<<temporal<< "ok update" << static_cast<int>(old_value.type()) <<std::endl;
       if (context.trigger_context_collector) {
         // rhs cannot be moved because it was created with the allocator that is only valid during current pull
         context.trigger_context_collector->RegisterSetObjectProperty(lhs.ValueVertex(), self_.property_,

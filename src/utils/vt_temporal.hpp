@@ -69,11 +69,15 @@ public:
     }
 
     static VTDateTime max() noexcept {
-        return VTDateTime(std::numeric_limits<int64_t>::max());
+        constexpr auto max_date = DateParameters{9999,12,31};
+        constexpr auto max_local_time_parameters = LocalTimeParameters{23,59,59, 999, 999};
+        return VTDateTime(max_date, max_local_time_parameters);
     }
 
     static VTDateTime min() noexcept {
-        return VTDateTime(std::numeric_limits<int64_t>::lowest());
+        constexpr auto min_date = DateParameters{0,1,1};
+        constexpr auto min_local_time_parameters = LocalTimeParameters{0,0,0, 0, 0};
+        return VTDateTime(min_date, min_local_time_parameters);
     }
 
     static VTDateTime prev(const VTDateTime& val) noexcept {
