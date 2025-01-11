@@ -3,8 +3,10 @@
 //
 
 #include "interval.hpp"
-
 #include <storage/v2/property_value.hpp>
+#include "query/serialization/property_value.hpp"
+
+
 
 #include "temporal_functions.hpp"
 
@@ -15,7 +17,8 @@ namespace utils {
     auto it = start, prev = start;
     while (it != end()) {
       VTDateTime& span_start = (it->first.first);
-      if (span_start == vt) {
+      VTDateTime& span_end = (it->first.second);
+      if (span_start == vt || span_end > vt) {
         return it;
       }
 
@@ -23,6 +26,7 @@ namespace utils {
         return prev;
       }
       prev = it;
+      ++it;
     }
     return std::nullopt;
   }
@@ -32,7 +36,8 @@ namespace utils {
     auto it = start, prev = start;
     while (it != end()) {
       const VTDateTime& span_start = (it->first.first);
-      if (span_start == vt) {
+      const VTDateTime& span_end = (it->first.second);
+      if (span_start == vt || span_end > vt) {
         return it;
       }
 
@@ -40,6 +45,7 @@ namespace utils {
         return prev;
       }
       prev = it;
+      ++it;
     }
     return std::nullopt;
   }
@@ -179,8 +185,11 @@ namespace utils {
       return result;
 
     auto it_end = seek(*it_start, from_to.second);
+    if (it_end == std::nullopt || *it_end == end())
+      it_end = it_start;
 
-    for (auto it = *it_start; it != it_end; it++) {
+    auto it = *it_start;
+    do {
       if (it->first.first > from_to.second)
         break;
 
@@ -188,7 +197,10 @@ namespace utils {
 
       if (it_intersect.valid())
         result.add(it_intersect, it->second);
-    }
+
+      if (it != *it_end)
+        ++it;
+    } while (it != *it_end && it!=end());
 
     return result;
   }
@@ -230,6 +242,24 @@ namespace utils {
   typename valued_timeline<T>::Iterator valued_timeline<T>::end() {
     return _container_interval.end();
   }
+
+  template<typename T>
+  std::string valued_timeline<T>::to_string() const {
+    auto it = _container_interval.begin();
+    std::string result = "{";
+    while (it != _container_interval.end()) {
+      result += "(" + std::to_string(it->first.first.get_microseconds()) + "," + std::to_string(it->first.second.get_microseconds()) ;
+      result += "," + query::serialization::SerializePropertyValue(it->second).dump() + ") ";
+      ++it;
+    }
+    return result + "}";
+  }
+
+  template<typename T>
+  size_t valued_timeline<T>::size() const {
+    return std::distance(_container_interval.begin(), _container_interval.end());
+  }
+
 
 
   void timeline::add(TimeSpan from_to) {
@@ -357,6 +387,21 @@ namespace utils {
     return _container_interval.end();
   }
 
+  std::string timeline::to_string() const {
+    auto it = _container_interval.begin();
+    std::string result = "{";
+    while (it != _container_interval.end()) {
+      result += "(" + std::to_string(it->first.get_microseconds()) + "," + std::to_string(it->second.get_microseconds()) + ") ";
+      it++;
+    }
+    return result + "}";
+  }
+
+
+  size_t timeline::size() const {
+    return std::distance(_container_interval.begin(), _container_interval.end());
+  }
+
   bool timeline::has_any() {
     return !_container_interval.empty();
   }
@@ -414,6 +459,5 @@ namespace utils {
   // }
 
   template class valued_timeline<storage::PropertyValue>;
-  template class valued_timeline<bool>;
 
 }

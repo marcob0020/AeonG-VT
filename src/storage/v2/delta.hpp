@@ -162,7 +162,7 @@ struct Delta {
   Delta(RemoveLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id)
       : action(Action::REMOVE_LABEL), timestamp(timestamp), command_id(command_id), label(label) {}
 
-  Delta(SetPropertyTag, PropertyId key, const PropertyValue &value, std::atomic<uint64_t> *timestamp,
+  Delta(SetPropertyTag, PropertyId key, const PropertyValue &value, const PropertyValue &new_value, std::atomic<uint64_t> *timestamp,
         uint64_t command_id)
       : action(Action::SET_PROPERTY), timestamp(timestamp), command_id(command_id), property({key, value}) {}
 
@@ -194,53 +194,57 @@ struct Delta {
         command_id(command_id),
         vertex_edge({edge_type, vertex, edge}) {}
 
-  Delta(DeleteObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
-      : action(Action::DELETE_OBJECT), timestamp(timestamp), command_id(command_id), vt(vt) {}
+  Delta(DeleteObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
+      : action(Action::DELETE_OBJECT), timestamp(timestamp), command_id(command_id), vt(vt), applied_vt(applied_vt) {}
 
-  Delta(RecreateObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
-      : action(Action::RECREATE_OBJECT), timestamp(timestamp), command_id(command_id), vt(vt) {}
+  Delta(RecreateObjectTag, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
+      : action(Action::RECREATE_OBJECT), timestamp(timestamp), command_id(command_id), vt(vt), applied_vt(applied_vt) {}
 
-  Delta(AddLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
-      : action(Action::ADD_LABEL), timestamp(timestamp), command_id(command_id), vt(vt), label(label) {}
+  Delta(AddLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
+      : action(Action::ADD_LABEL), timestamp(timestamp), command_id(command_id), vt(vt), label(label), applied_vt(applied_vt) {}
 
-  Delta(RemoveLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt)
-      : action(Action::REMOVE_LABEL), timestamp(timestamp), command_id(command_id), vt(vt), label(label) {}
+  Delta(RemoveLabelTag, LabelId label, std::atomic<uint64_t> *timestamp, uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
+      : action(Action::REMOVE_LABEL), timestamp(timestamp), command_id(command_id), vt(vt), label(label), applied_vt(applied_vt) {}
 
-  Delta(SetPropertyTag, PropertyId key, const PropertyValue &value, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const utils::TimeSpan& vt)
-      : action(Action::SET_PROPERTY), timestamp(timestamp), command_id(command_id), vt(vt), property({key, value}) {}
+  Delta(SetPropertyTag, PropertyId key, const PropertyValue &value, const PropertyValue &new_value, std::atomic<uint64_t> *timestamp,
+        uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
+      : action(Action::SET_PROPERTY), timestamp(timestamp), command_id(command_id), vt(vt), property({key, value, new_value}), applied_vt(applied_vt) {}
 
   Delta(AddInEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const utils::TimeSpan& vt)
+        uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
       : action(Action::ADD_IN_EDGE),
         timestamp(timestamp),
         command_id(command_id),
         vt(vt),
-        vertex_edge({edge_type, vertex, edge}) {}
+        vertex_edge({edge_type, vertex, edge}),
+        applied_vt(applied_vt) {}
 
   Delta(AddOutEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const utils::TimeSpan& vt)
+        uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
       : action(Action::ADD_OUT_EDGE),
         timestamp(timestamp),
         command_id(command_id),
         vt(vt),
-        vertex_edge({edge_type, vertex, edge}) {}
+        vertex_edge({edge_type, vertex, edge}),
+        applied_vt(applied_vt) {}
 
   Delta(RemoveInEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const utils::TimeSpan& vt)
+        uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
       : action(Action::REMOVE_IN_EDGE),
         timestamp(timestamp),
         command_id(command_id),
         vt(vt),
-        vertex_edge({edge_type, vertex, edge}) {}
+        vertex_edge({edge_type, vertex, edge}),
+        applied_vt(applied_vt) {}
 
   Delta(RemoveOutEdgeTag, EdgeTypeId edge_type, Vertex *vertex, EdgeRef edge, std::atomic<uint64_t> *timestamp,
-        uint64_t command_id, const utils::TimeSpan& vt)
+        uint64_t command_id, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt)
       : action(Action::REMOVE_OUT_EDGE),
         timestamp(timestamp),
         command_id(command_id),
         vt(vt),
-        vertex_edge({edge_type, vertex, edge}) {}
+        vertex_edge({edge_type, vertex, edge}),
+        applied_vt(applied_vt) {}
         
   Delta(const Delta &) = delete;
   Delta(Delta &&) = delete;
@@ -283,12 +287,14 @@ struct Delta {
   //hjm end
 
   utils::TimeSpan vt;
+  utils::TimeSpan applied_vt;
 
   union {
     LabelId label;
     struct {
       PropertyId key;
       storage::PropertyValue value;
+      storage::PropertyValue new_value;
     } property;
     struct {
       EdgeTypeId edge_type;

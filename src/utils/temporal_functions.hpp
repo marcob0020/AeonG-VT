@@ -54,7 +54,10 @@ namespace utils {
     }
 
     if (it_prev != timeline.end()) {
-      timeline.erase_after(it_prev, std::next(delete_end));
+      if (delete_end == timeline.end())
+        timeline.erase_after(it_prev);
+      else
+        timeline.erase_after(it_prev, std::next(delete_end));
     }
 
     std::forward_list<Item> tmp;
@@ -289,6 +292,8 @@ namespace utils {
     v_new.reserve(2);
 
     for (auto itx = timeline.begin(); itx != timeline.end(); itx++) {
+      auto itx_start = itx->first.first, itx_end = itx->first.second;
+
       if (vt.overlaps(itx->first)) {
         if (edit_start == timeline.begin()) {
           edit_start = itx;
@@ -301,7 +306,7 @@ namespace utils {
           write = true;
           V val = itx->second;
 
-          if (itx->first.first < vt.first) {
+          if (itx_start < vt.first) {
             itx->first.second = VTDateTime::prev(vt.first);
             edit_start = itx;
 
@@ -310,8 +315,8 @@ namespace utils {
             itx->second = value;
           }
 
-          if (itx->first.second > vt.second) {
-            v_new.emplace_back(TimeSpan(VTDateTime::next(vt.second),itx->first.second), val);
+          if (itx_end > vt.second) {
+            v_new.emplace_back(TimeSpan(VTDateTime::next(vt.second),itx_end), val);
           }
 
           if (!v_new.empty())
@@ -322,7 +327,7 @@ namespace utils {
         }
 
         if (vt_written) {
-          if (itx->first.second <= vt.second) {
+          if (itx_end <= vt.second) {
             if (deleting)
               delete_end = itx;
             else {
@@ -336,7 +341,7 @@ namespace utils {
           }
         }
 
-        if (itx->first.first < vt.first) {
+        if (itx_start < vt.first) {
           if (itx->second == value) {
             vt_written = true;
             itx->first.second = vt.second;
@@ -346,7 +351,7 @@ namespace utils {
             v_new.emplace_back(vt, value);
             vt_written = true;
           }
-        }else if (itx->first.second > vt.second) {
+        }else if (itx_end > vt.second) {
           if (itx->second == value) {
             vt_written = true;
             itx->first.first = vt.first;
@@ -365,7 +370,7 @@ namespace utils {
 
       }
 
-      if (itx->first.first > vt.second) {
+      if (itx_start > vt.second) {
         v_new.emplace_back(vt, value);
         vt_written = true;
         break;

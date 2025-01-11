@@ -249,16 +249,15 @@ class VertexAccessor final {
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key) const {
-    utils::TimeSpan nowTimespan = impl_.GetNowFilter().get_span();
 
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, impl_.GetNowFilter())->get_first(nowTimespan);
+      return impl_.GetProperty(key, view, impl_.GetNowFilter());
     return impl_.GetProperty(key, view);
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key, const utils::TemporalFilter& vt) const {
     if (impl_.HasTemporalFeatures())
-      return impl_.GetProperty(key, view, vt)->get_first(vt.get_span());
+      return impl_.GetProperty(key, view, vt);
     return impl_.GetProperty(key, view);
   }
 
@@ -765,5 +764,4 @@ template <>
 struct hash<query::EdgeAccessor> {
   size_t operator()(const query::EdgeAccessor &e) const { return std::hash<decltype(e.impl_)>{}(e.impl_); }
 };
-
 }  // namespace std

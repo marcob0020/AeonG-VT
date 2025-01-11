@@ -97,6 +97,17 @@ namespace storage {
     return utils::ValuedTimelineInsertion(vt, false, it->second, value);
   }
 
+  bool VtStore::InitProperty(PropertyId property, const PropertyValue &value) {
+    if (!properties_.contains(property)) {
+      std::vector<std::pair<utils::TimeSpan,PropertyValue>> v;
+      v.emplace_back(utils::TimeSpan(), value);
+      properties_.emplace(property, std::move(v));
+
+      return true;
+    }
+    return false;
+  }
+
   bool VtStore::ClearProperties() {
     bool empty = properties_.empty();
 

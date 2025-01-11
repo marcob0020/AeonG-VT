@@ -829,6 +829,9 @@ utils::timeline Storage::Accessor::VertexVt(const Vertex* vertex, const utils::T
   utils::timeline coverage(vt);
 
   coverage = vertex->vt_store.GetObjectValidity(vt);
+  if (!coverage.has_any()) {
+    coverage.add(utils::TimeSpan());
+  }
 
   auto before_delta= vertex->delta;
   while (before_delta != nullptr){
@@ -944,7 +947,7 @@ VertexAccessor Storage::Accessor::CreateVertex(const utils::TimeSpan& vt) {
   OOMExceptionEnabler oom_exception;
   auto gid = storage_->vertex_id_.fetch_add(1, std::memory_order_acq_rel);
   auto acc = storage_->vertices_.access();
-  auto delta = CreateDeleteObjectDelta(&transaction_,vt);
+  auto delta = CreateDeleteObjectDelta(&transaction_,vt, vt);
   auto [it, inserted] = acc.insert(Vertex{storage::Gid::FromUint(gid), delta});
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
@@ -988,7 +991,7 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const utils::Ti
   storage_->vertex_id_.store(std::max(storage_->vertex_id_.load(std::memory_order_acquire), gid.AsUint() + 1),
                              std::memory_order_release);
   auto acc = storage_->vertices_.access();
-  auto delta = CreateDeleteObjectDelta(&transaction_,vt);
+  auto delta = CreateDeleteObjectDelta(&transaction_,vt,vt);
   auto [it, inserted] = acc.insert(Vertex{gid, delta});
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
@@ -1166,7 +1169,7 @@ Result<std::optional<VertexAccessor>> Storage::Accessor::DeleteVertex(VertexAcce
   int n_delta = 0;
 
   for (const auto& vti : vt_range_obj) {
-    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, Delta::RecreateObjectTag());
+    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, vt, Delta::RecreateObjectTag());
 
     delta->transaction_st=ts;
     //save vertex to restore
@@ -1440,7 +1443,7 @@ Result<std::optional<std::pair<VertexAccessor, std::vector<EdgeAccessor>>>> Stor
   int n_delta = 0;
 
   for (const auto& vti : vt_range_obj) {
-    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, Delta::RecreateObjectTag());
+    auto delta=CreateAndLinkDelta(&transaction_, vertex_ptr, vti, vt, Delta::RecreateObjectTag());
 
     delta->transaction_st=ts;
     //save vertex to restore
@@ -1701,7 +1704,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   EdgeRef edge(gid);
   if (config_.properties_on_edges) {
     auto acc = storage_->edges_.access();
-    auto delta = CreateDeleteObjectDelta(&transaction_, vt);
+    auto delta = CreateDeleteObjectDelta(&transaction_, vt, vt);
     auto [it, inserted] = acc.insert(Edge(gid, delta));
     MG_ASSERT(inserted, "The edge must be inserted here!");
     MG_ASSERT(it != acc.end(), "Invalid Edge accessor!");
@@ -1717,7 +1720,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     TemporalFlagSet(&*it, vt);
   }
 
-  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
 
   TemporalFlagSet(from_vertex, vt);
 
@@ -1728,7 +1731,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   transaction_.ve_changed.insert(from_vertex->gid);
   //hjm end
 
-  delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
 
   TemporalFlagSet(to_vertex, vt);
 
@@ -1999,7 +2002,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   EdgeRef edge(gid);
   if (config_.properties_on_edges) {
     auto acc = storage_->edges_.access();
-    auto delta = CreateDeleteObjectDelta(&transaction_, vt);
+    auto delta = CreateDeleteObjectDelta(&transaction_, vt, vt);
     auto [it, inserted] = acc.insert(Edge(gid, delta));
     MG_ASSERT(inserted, "The edge must be inserted here!");
     MG_ASSERT(it != acc.end(), "Invalid Edge accessor!");
@@ -2015,7 +2018,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     delta->prev.Set(&*it);
   }
 
-  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
+  auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
 
   TemporalFlagSet(from_vertex, vt);
 
@@ -2024,7 +2027,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
   delta->transaction_st = from_ts;
   transaction_.ve_changed.insert(from_vertex->gid);
   //hjm end
-  delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
+  delta=CreateAndLinkDelta(&transaction_, to_vertex, vt, vt, Delta::RemoveInEdgeTag(), edge_type, from_vertex, edge);
 
   TemporalFlagSet(to_vertex, vt);
 
@@ -2428,8 +2431,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
     {
       utils::timeline vt_range_obj = EdgeVt(from_vertex,OBJECT,std::make_tuple(edge_type, to_vertex, edge_ref),vt);
 
-      int n_deltas = createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data](const utils::TimeSpan vtx) {
-        auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, vtx, Delta::RecreateObjectTag());
+      int n_deltas = createAndFillInDelta(vt_range_obj,[edge_ptr, ts, this, data, vt](const utils::TimeSpan vtx) {
+        auto delta=CreateAndLinkDelta(&transaction_, edge_ptr, vtx, vt, Delta::RecreateObjectTag());
         edge_ptr->deleted = true;
         //hjm begin store edge to reconstruct
         delta->transaction_st=ts;
@@ -2456,8 +2459,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   {
     vt_range_out =vt_range_out.split(vt);
 
-    int n_deltas = createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
-      auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vtx, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref);
+    int n_deltas = createAndFillInDelta(vt_range_out,[from_vertex, from_ts, edge_type, to_vertex, edge_ref, this, vt](const utils::TimeSpan vtx) {
+      auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vtx, vt, Delta::AddOutEdgeTag(), edge_type, to_vertex, edge_ref);
       //hjm begin
       delta->transaction_st = from_ts;
       transaction_.ve_changed.insert(from_vertex->gid);
@@ -2470,8 +2473,8 @@ Result<std::optional<EdgeAccessor>> Storage::Accessor::DeleteEdge(EdgeAccessor *
   {
     vt_range_in = vt_range_in.split(vt);
 
-    int n_deltas = createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this](const utils::TimeSpan vtx) {
-      auto delta=CreateAndLinkDelta(&transaction_, to_vertex, vtx, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref);
+    int n_deltas = createAndFillInDelta(vt_range_in, [from_vertex, to_ts, edge_type, to_vertex, edge_ref, this, vt](const utils::TimeSpan vtx) {
+      auto delta=CreateAndLinkDelta(&transaction_, to_vertex, vtx, vt, Delta::AddInEdgeTag(), edge_type, from_vertex, edge_ref);
       //hjm begin
       delta->transaction_st = to_ts;
       transaction_.ve_changed.insert(to_vertex->gid);

@@ -149,7 +149,7 @@ class VertexAccessor final {
   Result<PropertyValue> GetProperty(PropertyId property, View view) const;
 
   /// @throw std::bad_alloc
-  Result<utils::valued_timeline<PropertyValue>> GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const;
+  Result<PropertyValue> GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const;
 
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view) const;

@@ -6,6 +6,7 @@
 #define INTERVAL_HPP
 #include <forward_list>
 #include <utils/timespan.hpp>
+#include "../../libs/json/json.hpp"
 
 #include "vt_temporal.hpp"
 
@@ -62,6 +63,9 @@ class timeline {
 
     ConstIterator begin() const ;
     ConstIterator end() const ;
+
+    std::string to_string() const;
+    size_t size() const;
 
 
   private:
@@ -129,6 +133,9 @@ public:
 
   Iterator begin();
   Iterator end();
+
+  std::string to_string() const;
+  size_t size() const;
 
 private:
   std::optional<Iterator> seek(Iterator start, VTDateTime vt);

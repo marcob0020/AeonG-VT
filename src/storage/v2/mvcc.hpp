@@ -224,10 +224,10 @@ inline Delta *CreateDeleteObjectDelta(Transaction *transaction) {
 /// a `DELETE_OBJECT` delta).
 /// This overload takes the utils::TimeSpan vt as a parameter.
 /// @throw std::bad_alloc
-inline Delta *CreateDeleteObjectDelta(Transaction *transaction, const utils::TimeSpan& vt) {
+inline Delta *CreateDeleteObjectDelta(Transaction *transaction, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt) {
   transaction->EnsureCommitTimestampExists();
   auto delta =&transaction->deltas.emplace_back(Delta::DeleteObjectTag(), transaction->commit_timestamp.get(),
-                                           transaction->command_id, vt);
+                                           transaction->command_id, vt, applied_vt);
   //hjm begin
   delta->transaction_st =0;//transaction->transaction_id;//  transaction->transaction_id;
   //hjm end
@@ -312,10 +312,10 @@ inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, Args &
 /// This overload takes the utils::TimeSpan vt as a parameter. Only matching deltas are applied
 /// @throw std::bad_alloc
 template <typename TObj, class... Args>
-inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, const utils::TimeSpan& vt, Args &&...args) {
+inline Delta * CreateAndLinkDelta(Transaction *transaction, TObj *object, const utils::TimeSpan& vt, const utils::TimeSpan& applied_vt, Args &&...args) {
   transaction->EnsureCommitTimestampExists();
   auto delta = &transaction->deltas.emplace_back(std::forward<Args>(args)..., transaction->commit_timestamp.get(),
-                                                 transaction->command_id, vt);
+                                                 transaction->command_id, vt, applied_vt);
 
   // The operations are written in such order so that both `next` and `prev`
   // chains are valid at all times. The chains must be valid at all times
@@ -390,7 +390,7 @@ inline void EncodeIntoVtStore(const Delta *delta, Vertex *vertex) {
       vertex->vt_store.SetLabel(delta->label, delta->vt);
     break;
     case Delta::Action::SET_PROPERTY:
-      vertex->vt_store.SetProperty(delta->property.key, delta->property.value, delta->vt);
+      vertex->vt_store.SetProperty(delta->property.key, delta->property.new_value, delta->applied_vt);
     break;
     case Delta::Action::ADD_IN_EDGE:
       vertex->vt_store.DeleteIngoingEdge(std::tuple<EdgeTypeId, Vertex *, EdgeRef>(delta->vertex_edge.edge_type, delta->vertex_edge.vertex, delta->vertex_edge.edge), delta->vt);

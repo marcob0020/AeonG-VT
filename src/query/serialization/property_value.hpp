@@ -11,9 +11,10 @@
 
 #pragma once
 
-#include <json/json.hpp>
+#include "../../../libs/json/json.hpp"
 
 #include "storage/v2/property_value.hpp"
+
 
 namespace query::serialization {
 

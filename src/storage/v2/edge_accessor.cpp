@@ -22,19 +22,23 @@
 namespace storage {
 
 bool TemporalFlagSet(Edge* edge_, utils::TimeSpan span, int n_deltas) {
-  bool whole = span.whole();
+  bool ret = false;
 
   if (edge_->has_vt >= 0) {
+    ret = edge_->has_vt == 0;
     edge_->has_vt += n_deltas;
   }
 
-  return !whole;
+  return ret;
 }
 
 utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan &vt) {
   utils::valued_timeline<storage::PropertyValue> coverage(vt);
 
   coverage = edge_.ptr->vt_store.GetProperty(property_id, vt);
+  if (!coverage.has_any()) {
+    coverage.add(utils::TimeSpan(), edge_.ptr->properties.GetProperty(property_id));
+  }
 
   auto before_delta= edge_.ptr->delta;
   while (before_delta != nullptr){
@@ -225,7 +229,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   // current code always follows the logical pattern of "create a delta" and
   // "modify in-place". Additionally, the created delta will make other
   // transactions get a SERIALIZATION_ERROR.
-  auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), property, current_value);
+  auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), property, current_value, value);
   //hjm begin
   delta->from_gid=edge_.ptr->from_gid;
   delta->to_gid=edge_.ptr->to_gid;
@@ -295,7 +299,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   int n_deltas = 0;
 
   for (const auto& vti : vt_range_prop) {
-    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, Delta::SetPropertyTag(), property, vti.second);
+    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, vt, Delta::SetPropertyTag(), property, vti.second, value);
     //hjm begin
     delta->from_gid=edge_.ptr->from_gid;
     delta->to_gid=edge_.ptr->to_gid;
@@ -305,7 +309,8 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
     n_deltas++;
   }
 
-  TemporalFlagSet(edge_.ptr, vt, n_deltas);
+  if (TemporalFlagSet(edge_.ptr, vt, n_deltas))
+    edge_.ptr->vt_store.InitProperty(property, edge_.ptr->properties.GetProperty(property));
 
   edge_.ptr->properties.SetProperty(property, value);
   return std::move(current_value);
@@ -360,7 +365,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties() {
 
   auto properties = edge_.ptr->properties.Properties();
   for (const auto &property : properties) {
-    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), property.first, property.second);
+    auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, Delta::SetPropertyTag(), property.first, property.second, PropertyValue());
     //hjm begin
     delta->from_gid=edge_.ptr->from_gid;
     delta->to_gid=edge_.ptr->to_gid;
@@ -431,7 +436,7 @@ Result<std::map<PropertyId, PropertyValue>> EdgeAccessor::ClearProperties(const 
     vt_range_prop = vt_range_prop.split(vt);
 
     for (const auto& vti: vt_range_prop) {
-      auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, Delta::SetPropertyTag(), property.first, vti.second);
+      auto delta=CreateAndLinkDelta(transaction_, edge_.ptr, vti.first, vt, Delta::SetPropertyTag(), property.first, vti.second, PropertyValue());
       //hjm begin
       delta->from_gid=edge_.ptr->from_gid;
       delta->to_gid=edge_.ptr->to_gid;

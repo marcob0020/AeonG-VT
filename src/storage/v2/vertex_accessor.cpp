@@ -112,13 +112,14 @@ namespace {
 }  // namespace help
 
 bool TemporalFlagSet(Vertex* vertex_, utils::TimeSpan span, int n_deltas) {
-  bool whole = span.whole();
+  bool ret = false;
 
   if (vertex_->has_vt >= 0) {
+    ret = vertex_->has_vt == 0;
     vertex_->has_vt+= n_deltas;
   }
 
-  return !whole;
+  return ret;
 }
 
 std::optional<VertexAccessor> VertexAccessor::Creates(Vertex *vertex, Transaction *transaction, Indices *indices,
@@ -323,7 +324,7 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
     return false;
 
   for (const auto& vti: vt_range_label) {
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, Delta::RemoveLabelTag(), label);
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, vt, Delta::RemoveLabelTag(), label);
     delta->transaction_st = ts;
     n_deltas++;
   }
@@ -483,7 +484,7 @@ Result<bool> VertexAccessor::RemoveLabel(LabelId label, const utils::TimeSpan& v
   vt_range_label = vt_range_label.split(vt);
 
   for (const auto vti: vt_range_label) {
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, Delta::AddLabelTag(), label);
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, vt, Delta::AddLabelTag(), label);
     delta->transaction_st = ts!=0? ts: vertex_->transaction_st;
     n_deltas++;
   }
@@ -563,6 +564,13 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const utils::Tem
   }
   utils::timeline vt_range_label = vertex_->vt_store.GetLabel(label,  vt.get_span());
   utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+
+  if (!vt_range_label.has_any() && has_label) {
+    vt_range_label.add(utils::TimeSpan());
+  }
+  if (!vt_range_obj.has_any()) {
+    vt_range_obj.add(utils::TimeSpan());
+  }
 
   ApplyDeltasForRead(transaction_, delta, view, vt, [&exists, &deleted, &has_label, label, &vt_range_label, &vt_range_obj](const Delta &delta, utils::TimeSpan vt_intersect) {
     switch (delta.action) {
@@ -794,7 +802,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   // current code always follows the logical pattern of "create a delta" and
   // "modify in-place". Additionally, the created delta will make other
   // transactions get a SERIALIZATION_ERROR.
-  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property, current_value);
+  auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property, current_value, value);
 
   vertex_->properties.SetProperty(property, value);
   vertex_->num+=1;
@@ -869,6 +877,9 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt);
   vt_range_prop.fill_voids(vt,PropertyValue());
 
+  std::string a = vt_range_prop.to_string();
+  std::cout<<a<<std::endl;
+
   auto current_value_x = PropertyValue();
   int n_deltas = 0;
 
@@ -880,7 +891,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
     // current code always follows the logical pattern of "create a delta" and
     // "modify in-place". Additionally, the created delta will make other
     // transactions get a SERIALIZATION_ERROR.
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, Delta::SetPropertyTag(), property, current_value);
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, vt, Delta::SetPropertyTag(), property, current_value, value);
     delta->transaction_st = vertex_->transaction_st;//ts;
     n_deltas++;
 
@@ -888,7 +899,8 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
       current_value_x = current_value;
   }
 
-  TemporalFlagSet(vertex_, vt, n_deltas);
+  if (TemporalFlagSet(vertex_, vt, n_deltas))
+    vertex_->vt_store.InitProperty(property, vertex_->properties.GetProperty(property));
 
   vertex_->properties.SetProperty(property, value);
   vertex_->num+=1;
@@ -959,8 +971,9 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties() {
   }
 
   auto properties = vertex_->properties.Properties();
+  auto pv_now = PropertyValue();
   for (const auto &property : properties) {
-    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property.first, property.second);
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, Delta::SetPropertyTag(), property.first, property.second, pv_now);
     //set for aeong
     delta->transaction_st = ts;
     UpdateOnSetProperty(indices_, property.first, PropertyValue(), vertex_, *transaction_);
@@ -1064,7 +1077,7 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::ClearProperties(cons
       // current code always follows the logical pattern of "create a delta" and
       // "modify in-place". Additionally, the created delta will make other
       // transactions get a SERIALIZATION_ERROR.
-      auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, Delta::SetPropertyTag(), prop.first, current_value);
+      auto delta=CreateAndLinkDelta(transaction_, vertex_, vti.first, vt, Delta::SetPropertyTag(), prop.first, current_value, PropertyValue());
       delta->transaction_st = vertex_->transaction_st;//ts;
       n_deltas++;
 
@@ -1156,7 +1169,7 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
   return std::move(value);
 }
 
-Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const {
+Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view, const utils::TemporalFilter& vt) const {
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
@@ -1203,7 +1216,7 @@ Result<utils::valued_timeline<PropertyValue>> VertexAccessor::GetProperty(Proper
 
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
-  return std::move(res);
+  return std::move(res.get_single(vt.get_span()));
 
 }
 
@@ -1733,6 +1746,9 @@ utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(
   utils::valued_timeline<storage::PropertyValue> coverage(vt);
 
   coverage = vertex_->vt_store.GetProperty(property_id, vt);
+  if (!coverage.has_any()) {
+    coverage.add(utils::TimeSpan(), vertex_->properties.GetProperty(property_id));
+  }
 
   auto before_delta= vertex_->delta;
   while (before_delta != nullptr){
@@ -1741,7 +1757,7 @@ utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(
       case storage::Delta::Action::SET_PROPERTY: {
         if (before_delta->property.key != property_id)
           continue;
-        coverage.add(before_delta->vt, before_delta->property.value);
+        coverage.add(before_delta->vt, before_delta->property.new_value);
         break;
       }
       default:break;
@@ -1755,6 +1771,9 @@ utils::timeline VertexAccessor::LabelTimeline(storage::LabelId label_id, const u
   utils::timeline coverage(vt);
 
   coverage = vertex_->vt_store.GetLabel(label_id, vt);
+  if (!coverage.has_any() && std::find(vertex_->labels.begin(), vertex_->labels.end(), label_id) != vertex_->labels.end()) {
+    coverage.add(utils::TimeSpan());
+  }
 
   auto before_delta= vertex_->delta;
   while (before_delta != nullptr){
