@@ -921,6 +921,7 @@ PullPlan::PullPlan(const std::shared_ptr<CachedPlan> plan, const Parameters &par
     vt_filter = utils::TemporalFilter();
   }
   ctx_.addition_vt = vt_filter.value();
+  ctx_.evaluation_context.vt = vt_filter.value();
 }
 //wzy edit end
 

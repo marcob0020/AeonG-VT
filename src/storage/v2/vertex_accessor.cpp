@@ -1211,6 +1211,8 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
         break;
     }
   });
+  std::cout<<vt_range_obj.to_string()<<std::endl;
+
   exists = vt_range_obj.has_any();
   deleted = !exists;
 

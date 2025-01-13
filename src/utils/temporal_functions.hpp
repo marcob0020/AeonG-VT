@@ -1,6 +1,3 @@
-//
-// Created by marcob0020 on 11/30/24.
-//
 #pragma once
 #include <utils/timespan.hpp>
 
@@ -14,13 +11,11 @@ namespace utils {
 
   template<typename Item>
   void CombineIntoVector(std::vector<Item>& timeline, const std::vector<Item>& v_new, typename std::vector<Item>::iterator itx) {
-    // auto it = itx == timeline.end() ? itx : itx + 1;
-    timeline.insert(itx, v_new.begin(), v_new.end());
+    timeline.insert(std::next(itx), v_new.begin(), v_new.end());
   }
 
   template<typename Item>
   void CombineIntoVector(std::forward_list<Item>& timeline, const std::vector<Item>& v_new, typename std::forward_list<Item>::iterator itx) {
-    // auto it = itx == timeline.end() ? itx : itx + 1;
     std::forward_list<Item> tmp;
     for (auto it = v_new.rbegin(); it != v_new.rend(); it++) {
       tmp.push_front(*it);
@@ -40,7 +35,7 @@ namespace utils {
       it_act = delete_end;
     }
 
-    timeline.insert(it_act, v_new.begin(), v_new.end());
+    timeline.insert(std::next(it_act), v_new.begin(), v_new.end());
   }
 
   template<typename Item>
@@ -53,7 +48,7 @@ namespace utils {
       it_prev = it;
     }
 
-    if (it_prev != timeline.end()) {
+    if (it_prev != timeline.end() && delete_start != timeline.end()) {
       if (delete_end == timeline.end())
         timeline.erase_after(it_prev);
       else
@@ -73,7 +68,7 @@ namespace utils {
     auto it_act = delete_start;
 
     if (it_act != timeline.end()) {
-      timeline.erase(delete_start, delete_end);
+      timeline.erase(delete_start, std::next(delete_end));
     }
   }
 
@@ -107,9 +102,18 @@ namespace utils {
     timeline.insert_after(it_prev, item);
   }
 
+  template<typename Item>
+  typename std::vector<Item>::iterator InitPrev(std::vector<Item>& timeline) {
+    return timeline.begin();
+  }
+
+  template<typename Item>
+  typename std::forward_list<Item>::iterator InitPrev(std::forward_list<Item>& timeline) {
+    return timeline.before_begin();
+  }
+
   template<typename T>
-  bool TimelineInsertion(const utils::TimeSpan& vt, bool inverse, T& list) {
-    //TODO ensure write is valued
+  bool TimelineInsertion(const TimeSpan& vt, bool inverse, T& list) {
     bool write = false;
 
     if (list.empty()) {
@@ -164,6 +168,8 @@ namespace utils {
           if (itx->first < vt.first) {
             if (itx->second > vt.second) {
               v_new.emplace_back(VTDateTime::next(vt.second), itx->second);
+              itx->second = VTDateTime::prev(vt.first);
+              edit_vt = itx;
               break;
             }
 
@@ -179,7 +185,7 @@ namespace utils {
               }
               delete_end = itx;
             }else {
-              itx->second = VTDateTime::next(vt.second);
+              itx->first = VTDateTime::next(vt.second);
               break;
             }
           }
@@ -285,17 +291,17 @@ namespace utils {
       return true;
     }
 
-    auto edit_start = timeline.end() , edit_end = timeline.end(), prev = timeline.begin(), delete_start = timeline.end(), delete_end = timeline.end();
+    auto edit_start = timeline.end() , edit_end = timeline.end(), prev = InitPrev(timeline), delete_start = timeline.end(), delete_end = timeline.end();
 
     bool vt_written = false, deleting = false;
     std::vector<std::pair<TimeSpan,V>> v_new;
     v_new.reserve(2);
 
     for (auto itx = timeline.begin(); itx != timeline.end(); itx++) {
-      auto itx_start = itx->first.first, itx_end = itx->first.second;
+      utils::VTDateTime itx_start = itx->first.first, itx_end = itx->first.second;
 
       if (vt.overlaps(itx->first)) {
-        if (edit_start == timeline.begin()) {
+        if (edit_start == timeline.end()) {
           edit_start = itx;
         }
         if (vt.included(itx->first)) {
@@ -323,7 +329,6 @@ namespace utils {
             CombineIntoVector(timeline, v_new, itx);
 
           return true;
-
         }
 
         if (vt_written) {
@@ -336,25 +341,48 @@ namespace utils {
               delete_end = itx;
             }
           }else {
-            itx->first.first = VTDateTime::next(vt.second);
+            if (itx->second == value) {
+              if (edit_start->second == value)
+                edit_start->first.second = VTDateTime::greater(vt.second, itx_end);
+              else {
+                if (deleting)
+                  delete_end = itx;
+                else {
+                  deleting = true;
+                  delete_start = itx;
+                  delete_end = itx;
+                }
+              }
+            }else {
+              itx->first.first = VTDateTime::next(vt.second);
+            }
+
             break;
+          }
+
+          if (itx->second == value) {
+            itx->first.first = VTDateTime::less(vt.first, itx_start);
+            itx->first.second = VTDateTime::greater(vt.second, itx_end);
           }
         }
 
         if (itx_start < vt.first) {
           if (itx->second == value) {
             vt_written = true;
-            itx->first.second = vt.second;
+            itx->first.second = utils::VTDateTime::greater(vt.second, itx_end);
           }else {
             itx->first.second = VTDateTime::prev(vt.first);
 
-            v_new.emplace_back(vt, value);
-            vt_written = true;
+            if (itx_end >= vt.second) {
+              v_new.emplace_back(vt, value);
+              vt_written = true;
+            }
+
           }
         }else if (itx_end > vt.second) {
           if (itx->second == value) {
             vt_written = true;
-            itx->first.first = vt.first;
+            itx->first.first = utils::VTDateTime::less(vt.first, itx_start);
           }else {
             itx->first.first = VTDateTime::next(vt.second);
 
@@ -363,17 +391,49 @@ namespace utils {
           }
         }else {
           if (!vt_written) {
-            itx->first = vt;
+            itx->first = utils::TimeSpan(utils::VTDateTime::less(vt.first, itx_start),utils::VTDateTime::greater(vt.second, itx_end));
             itx->second = value;
+            vt_written = true;
           }
         }
 
       }
 
-      if (itx_start > vt.second) {
-        v_new.emplace_back(vt, value);
+      if ((itx_start == utils::VTDateTime::next(vt.second) || itx_end == utils::VTDateTime::prev(vt.first))&& itx->second == value && !vt_written) {
+        edit_start = itx;
+        itx->first.first = VTDateTime::less(vt.first, itx_start);
+        itx->first.second = VTDateTime::greater(vt.second, itx_end);
         vt_written = true;
-        break;
+      }
+
+      if (itx_start > vt.second) {
+        if (!vt_written) {
+          if (edit_start == timeline.end()) {
+            edit_start = prev;
+          }
+          v_new.emplace_back(vt, value);
+          vt_written = true;
+          break;
+        }
+
+        if (itx_start >= utils::VTDateTime::next(vt.second)) {
+          if (itx_start == utils::VTDateTime::next(vt.second) && itx->second == value) {
+            if (edit_start->second == value)
+              edit_start->first.second = VTDateTime::greater(vt.second, itx_end);
+            if (edit_start != itx) {
+              if (deleting)
+                delete_end = itx;
+              else {
+                deleting = true;
+                delete_start = itx;
+                delete_end = itx;
+                if (edit_start->second == value) {
+                  edit_start->first.second = VTDateTime::greater(itx_end, vt.second);
+                }
+              }
+            }
+          }
+        }
       }
       prev = itx;
     }
@@ -382,7 +442,11 @@ namespace utils {
       v_new.emplace_back(vt, value);
     }
 
-    ReplaceIntoVector(timeline, v_new, delete_start, delete_start == timeline.end() ? edit_start: delete_end );
+    if (delete_start == timeline.end() && edit_start != timeline.end()) {
+      CombineIntoVector(timeline,v_new, edit_start);
+    }else /*if (delete_start != timeline.end() && !v_new.empty()) */ {
+      ReplaceIntoVector(timeline, v_new, delete_start, delete_start == timeline.end() ? edit_start: delete_end );
+    }
 
     return write;
   }
@@ -415,7 +479,7 @@ namespace utils {
         result.add(vt.intersect(kv.first), kv.second);
       }
 
-      if (vt.second >= kv.first.second)
+      if (kv.first.first > vt.second)
         break;
     }
 

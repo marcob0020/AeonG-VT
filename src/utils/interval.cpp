@@ -360,6 +360,9 @@ namespace utils {
 
     auto it_start = seek(begin(),from_to.first);
 
+    if (it_start == std::nullopt || *it_start == end())
+      return result;
+
     for (auto it = *it_start; it != end(); it++) {
       auto it_intersect = it->intersect(this->from_to);
 
