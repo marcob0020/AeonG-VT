@@ -1749,7 +1749,7 @@ utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(
 
   coverage = vertex_->vt_store.GetProperty(property_id, vt);
   if (!coverage.has_any()) {
-    coverage.add(utils::TimeSpan(), vertex_->properties.GetProperty(property_id));
+    coverage.add(vt, vertex_->properties.GetProperty(property_id));
   }
 
   auto before_delta= vertex_->delta;
@@ -1759,7 +1759,7 @@ utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(
       case storage::Delta::Action::SET_PROPERTY: {
         if (before_delta->property.key != property_id)
           continue;
-        coverage.add(before_delta->vt, before_delta->property.new_value);
+        coverage.add(before_delta->applied_vt, before_delta->property.new_value);
         break;
       }
       default:break;
@@ -1774,7 +1774,7 @@ utils::timeline VertexAccessor::LabelTimeline(storage::LabelId label_id, const u
 
   coverage = vertex_->vt_store.GetLabel(label_id, vt);
   if (!coverage.has_any() && std::find(vertex_->labels.begin(), vertex_->labels.end(), label_id) != vertex_->labels.end()) {
-    coverage.add(utils::TimeSpan());
+    coverage.add(vt);
   }
 
   auto before_delta= vertex_->delta;
