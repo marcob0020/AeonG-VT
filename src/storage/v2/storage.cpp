@@ -622,21 +622,24 @@ storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const storag
 
 
 storage::HistoryVertex Storage::Accessor::CreateHistoryVertexFromKV(const VertexAccessor &another,nlohmann::json gid_delta_,history_delta::HistoryContext &historyContext_){
-  //properties
-  auto deltas=another.vertex_->delta;
-  auto maybe_properties=another.vertex_->properties.Properties();
-  auto maybe_labels=another.vertex_->labels;
-  //deleted info
-  auto property_ids = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("delete_info"));
-  auto property_values = storage::PropertyValue(gid_delta_.dump());
-  maybe_properties[property_ids]=property_values;
-
-
   auto tt_ts=gid_delta_["TT_TS"].get<uint64_t>();
   auto tt_te=gid_delta_["TT_TE"].get<uint64_t>();
 
   auto vt_ts=gid_delta_["VT_TS"].get<int64_t>();
   auto vt_te=gid_delta_["VT_TE"].get<int64_t>();
+
+  utils::TimeSpan vt {utils::VTDateTime(vt_ts),utils::VTDateTime(vt_te)};
+  utils::TemporalFilter filtered_vt = historyContext_.vt.get_filtered_span(vt);
+  bool has_vt = another.HasTemporalFeatures();
+
+  //properties
+  auto deltas=another.vertex_->delta;
+  auto maybe_properties= has_vt ? another.Properties(View::OLD, filtered_vt).GetValue() : another.vertex_->properties.Properties();
+  auto maybe_labels= has_vt ? another.Labels(View::OLD, filtered_vt).GetValue() : another.vertex_->labels;
+  //deleted info
+  auto property_ids = PropertyId::FromUint(storage_->name_id_mapper_.NameToId("delete_info"));
+  auto property_values = storage::PropertyValue(gid_delta_.dump());
+  maybe_properties[property_ids]=property_values;
   //TODO edges
   auto new_vertex=HistoryVertex(another.vertex_->gid,tt_ts,tt_te);
   new_vertex.labels=maybe_labels;

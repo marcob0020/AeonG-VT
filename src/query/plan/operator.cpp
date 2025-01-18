@@ -437,7 +437,7 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::Hist
     }
 
     //delete info
-    auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetVertexInfo(current_vertex_.Gid(),historyContext_.c_ts,historyContext_.c_te,historyContext_.types);
+    auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetVertexInfo(current_vertex_.Gid(),historyContext_.c_ts,historyContext_.c_te,historyContext_.types,historyContext_.vt);
     for(auto gid_delta_:gid_history_deltas_){
         if(history_flag){
             current_vertex1=context.db_accessor->CreateHistoryVertexFromKV(current_vertex1,gid_delta_,historyContext_);
@@ -468,7 +468,7 @@ bool addHistoryVertex2(query::VertexAccessor &current_vertex_,history_delta::His
   }
 
   //delete info
-  auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetVertexInfo(current_vertex_.Gid(),historyContext_.c_ts,historyContext_.c_te,historyContext_.types);
+  auto [gid_history_deltas_,flag]=context.db_accessor->GetHistoryDelta()->GetVertexInfo(current_vertex_.Gid(),historyContext_.c_ts,historyContext_.c_te,historyContext_.types,historyContext_.vt);
   for(auto gid_delta_:gid_history_deltas_){
     if(history_flag){
       current_vertex1=context.db_accessor->CreateHistoryVertexFromKV(current_vertex1,gid_delta_,historyContext_);
@@ -502,7 +502,6 @@ class ScanAllCursor : public Cursor {
 
     if (MustAbort(context)) throw HintedAbortError();
 
-    std::cout<<context.addition_vt<<std::endl;
   
     if(context.addition){
       if(count==0){
@@ -515,6 +514,7 @@ class ScanAllCursor : public Cursor {
         historyContext_.c_ts=ts;//ts
         historyContext_.c_te=te;//te
         historyContext_.types= ts==te? utils::TemporalQueryType::AS_OF : utils::TemporalQueryType::FROM_TO;
+        historyContext_.vt=context.addition_vt;
         count++;
       }
 
@@ -1016,6 +1016,7 @@ void pull_nodes_current_history(ExecutionContext &context,VertexAccessor current
   historyContext2.c_ts=(obj_ts > historyContext_.c_ts ? obj_ts: historyContext_.c_ts);//ts
   historyContext2.c_te=(obj_te > historyContext_.c_te ? obj_te: historyContext_.c_te);//te
   historyContext2.types=historyContext_.types;
+  historyContext2.vt=historyContext_.vt;
 
   addHistoryVertex2(current_vertex,historyContext_,historyContext2,current_edge,history_add_,context,true); //gmark
 };

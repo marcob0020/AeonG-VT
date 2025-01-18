@@ -89,7 +89,7 @@ std::vector<Expansion> NormalizePatterns(const SymbolTable &symbol_table, const 
 // were in a Where clause).
 void AddMatching(const std::vector<Pattern *> &patterns, Where *where, Tt *tt, Vt *vt,SymbolTable &symbol_table, AstStorage &storage,
                  Matching &matching) {
-  std::cout<<"###memgraph preprocess::AddMatching"<<std::endl;
+
   auto expansions = NormalizePatterns(symbol_table, patterns);
   std::unordered_set<Symbol> edge_symbols;
   for (const auto &expansion : expansions) {

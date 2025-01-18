@@ -83,6 +83,15 @@ namespace utils{
         return {get_first(), get_second()};
       }
 
+      TemporalFilter get_filtered_span(TimeSpan filter) const {
+        const TimeSpan ts = get_span().intersect(filter);
+        TemporalFilter ret = *this;
+        ret.first = ts.first;
+        ret.second = ts.second;
+
+        return ret;
+      }
+
       bool whole() const {
         return type != TemporalQueryType::AS_OF && first == VTDateTime::min() && second == VTDateTime::max();
       }

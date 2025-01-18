@@ -226,61 +226,58 @@ utils::TimeSpan parseFormattedVT(const std::string& formatted_vt) {
 
 
 std::tuple<uint64_t,int64_t,int64_t, utils::TimeSpan> string_convert_to_uint(const std::string& res){
-    constexpr size_t size64=sizeof(int64_t);
-    const size_t length=res.length();
+  std::vector<std::string> res_split = split(res,':');
+  //Res split:
+  // 0   Segment Prefix
+  // 1   Gid
+  // 2   TT start
+  // 3   TT end
+  // 4   VT start
+  // 5   VT end
+  // count = 6
 
-    std::vector<std::string> res_split = split(res,':');
-   //Res split:
-   // 0   Segment Prefix
-   // 1   Gid
-   // 2   TT start
-   // 3   TT end
-   // 4   VT start
-   // 5   VT end
-   // count = 6
+  //1.get gid
+  const auto gid_uint = static_cast<uint64_t>(std::stoi(res_split[k_i_Gid]));
 
-    //1.get gid
-    const auto gid_uint = static_cast<uint64_t>(std::stoi(res_split[k_i_Gid]));
+  //2.get TT
+  const auto tt_ts = swap64(*reinterpret_cast<const int64_t *>(res_split[k_i_TT_s].c_str()));
+  const auto tt_te = swap64(*reinterpret_cast<const int64_t *>(res_split[k_i_TT_e].c_str()));
 
-   //2.get TT
-   const auto tt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_TT_s]));
-   const auto tt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_TT_e]));
+  //3.get VT
+  utils::VTDateTime vt_start = utils::VTDateTime::min();
+  utils::VTDateTime vt_end = utils::VTDateTime::max();
+  if (res_split.size() == 6) {
+    const auto vt_ts = swap64(*reinterpret_cast<const int64_t *>(res_split[k_i_VT_s].c_str()));
+    const auto vt_te = swap64(*reinterpret_cast<const int64_t *>(res_split[k_i_VT_e].c_str()));
 
-   //3.get VT
-   utils::VTDateTime vt_start = utils::VTDateTime::min();
-   utils::VTDateTime vt_end = utils::VTDateTime::max();
-   if (res_split.size() == 6) {
-     const auto vt_ts = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_VT_s]));
-     const auto vt_te = swap64(*reinterpret_cast<int64_t *>(&res_split[k_i_VT_e]));
+    vt_start = utils::VTDateTime(vt_ts);
+    vt_end = utils::VTDateTime(vt_te);
+  }
+  utils::TimeSpan vt(vt_start, vt_end);
 
-     vt_start = utils::VTDateTime(vt_ts);
-     vt_end = utils::VTDateTime(vt_te);
-   }
-   utils::TimeSpan vt(vt_start, vt_end);
+  return std::make_tuple(gid_uint, tt_ts, tt_te, vt);
 
-   return std::make_tuple(gid_uint, tt_ts, tt_te, vt);
-
-    // //get gid
-    // const size_t pos = res.find(':');
-    // std::string gid_str=res.substr(pos+1,length-2*size64-3-pos);//3:4 12 20-2*8
-    // auto gid=static_cast<uint64_t>(std::stoi(gid_str));
-    //
-    // //get times
-    // const std::string redo_str1=res.substr(length-size64);//12:
-    // const std::string redo_str2=res.substr(length-2*size64-1,size64);//3:12
-    //
-    // char redo[size64];
-    // char redo2[size64];
-    // for(int i=0;i<size64;i++){
-    //     redo[i]=redo_str1[i];
-    //     redo2[i]=redo_str2[i];
-    // }
-    // auto ts = *reinterpret_cast<int64_t *>(redo2);// redo_str;
-    // auto te = *reinterpret_cast<int64_t *>(redo);
-    // ts=swap64(ts);
-    // te=swap64(te);
-    //
-    // return std::make_tuple(gid,ts,te);
+  // //get gid
+  // const size_t pos = res.find(':');
+  // std::string gid_str=res.substr(pos+1,length-2*size64-3-pos);//3:4 12 20-2*8
+  // auto gid=static_cast<uint64_t>(std::stoi(gid_str));
+  //
+  // //get times
+  // const std::string redo_str1=res.substr(length-size64);//12:
+  // const std::string redo_str2=res.substr(length-2*size64-1,size64);//3:12
+  //
+  // char redo[size64];
+  // char redo2[size64];
+  // for(int i=0;i<size64;i++){
+  //     redo[i]=redo_str1[i];
+  //     redo2[i]=redo_str2[i];
+  // }
+  // auto ts = *reinterpret_cast<int64_t *>(redo2);// redo_str;
+  // auto te = *reinterpret_cast<int64_t *>(redo);
+  // ts=swap64(ts);
+  // te=swap64(te);
+  //
+  // return std::make_tuple(gid,ts,te);
 }
 
 void combineVertex(nlohmann::json before_data,nlohmann::json &current_data){
@@ -567,6 +564,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
         if(object_te<c_ts)
           break;
 
+
         auto current_info=nlohmann::json::parse(vd_iter_begin->second);//data of current node
         if(need_combine){
             combineVertex(tmp_info,current_info);
@@ -632,7 +630,7 @@ std::pair<std::vector<nlohmann::json>,bool> HistoryDelta::GetVertexInfo(storage:
     if(object_te<c_ts)
       break;
     if(!vt_filter.matches(vt.first, vt.second))
-      break;
+      continue;
 
     multiple_vts |= !vt_filter.get_span().included(vt);
 
