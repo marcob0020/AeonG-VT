@@ -2072,7 +2072,7 @@ antlrcpp::Any CypherMainVisitor::visitLiteral(MemgraphCypher::LiteralContext *ct
 }
 
   antlrcpp::Any CypherMainVisitor::visitVt_literal(MemgraphCypher::Vt_literalContext *ctx) {
-  std::cout<<"###memgraph CypherMainVisitor::visitVtLiteral"<<std::endl;
+
   if (ctx->StringLiteral() || ctx->integerLiteral() ) {
     int token_position = ctx->getStart()->getTokenIndex();
     auto vtDateParser = [this,token_position](const antlrcpp::Any& v) {

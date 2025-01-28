@@ -1140,7 +1140,7 @@ PreparedQuery PrepareCypherQuery(ParsedQuery parsed_query, std::map<std::string,
 
   //hjm end
 
-  std::cout<<"###memgraph intepreter::PrepareCypherQuery "<<std::endl;
+
 
   auto vt_exprs = plan->getVTHistoryInfo();
   if(vt_exprs) {
