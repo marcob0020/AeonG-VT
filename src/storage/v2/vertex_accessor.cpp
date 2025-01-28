@@ -878,7 +878,6 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   vt_range_prop.fill_voids(vt,PropertyValue());
 
   std::string a = vt_range_prop.to_string();
-  std::cout<<a<<std::endl;
 
   auto current_value_x = PropertyValue();
   int n_deltas = 0;
@@ -1173,7 +1172,7 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
-  utils::valued_timeline<PropertyValue> res = vertex_->vt_store.GetProperty(property, vt.get_span());
+  utils::valued_timeline<PropertyValue> res = PropertyTimeline(property, vt.get_span());
   utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
 
   Delta *delta = nullptr;
@@ -1211,7 +1210,6 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
         break;
     }
   });
-  std::cout<<vt_range_obj.to_string()<<std::endl;
 
   exists = vt_range_obj.has_any();
   deleted = !exists;
@@ -1753,13 +1751,14 @@ utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(
   }
 
   auto before_delta= vertex_->delta;
+
   while (before_delta != nullptr){
     bool delta_is_edge=false;
     switch (before_delta->action) {
       case storage::Delta::Action::SET_PROPERTY: {
-        if (before_delta->property.key != property_id)
-          continue;
-        coverage.add(before_delta->applied_vt, before_delta->property.new_value);
+        if (before_delta->property.key == property_id) {
+          coverage.add(before_delta->applied_vt, before_delta->property.new_value);
+        }
         break;
       }
       default:break;
