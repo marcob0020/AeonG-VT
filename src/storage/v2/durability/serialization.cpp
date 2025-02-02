@@ -128,6 +128,14 @@ void Encoder::WritePropertyValue(const PropertyValue &value) {
       WriteUint(utils::MemcpyCast<uint64_t>(temporal_data.microseconds));
       break;
     }
+    case PropertyValue::Type::TimeSpan: {
+      const auto timespan_data = value.ValueTimeSpan();
+      WriteMarker(Marker::TYPE_TIMESPAN);
+      WriteUint(static_cast<uint64_t>(timespan_data.first.first.get_microseconds()));
+      WriteUint(static_cast<uint64_t>(timespan_data.first.second.get_microseconds()));
+      WritePropertyValue(*timespan_data.second);
+      break;
+    }
   }
 }
 
@@ -326,6 +334,22 @@ std::optional<PropertyValue> Decoder::ReadPropertyValue() {
       if (!maybe_temporal_data) return std::nullopt;
       return PropertyValue(*maybe_temporal_data);
     }
+    case Marker::TYPE_TIMESPAN: {
+      auto inner_marker = ReadMarker();
+      if (!inner_marker || *inner_marker != Marker::TYPE_TIMESPAN) return std::nullopt;
+
+      const auto microseconds_first = ReadUint();
+      if (!microseconds_first) return std::nullopt;
+
+      const auto microseconds_second = ReadUint();
+      if (!microseconds_second) return std::nullopt;
+
+      auto item = ReadPropertyValue();
+      if (!item) return std::nullopt;
+
+      utils::VTDateTime first(utils::MemcpyCast<int64_t>(*microseconds_first)), second(utils::MemcpyCast<int64_t>(*microseconds_second));
+      return PropertyValue(std::make_pair(utils::TimeSpan(first, second), new PropertyValue(std::move(*item))));
+    }
 
     case Marker::TYPE_PROPERTY_VALUE:
     case Marker::SECTION_VERTEX:
@@ -430,6 +454,19 @@ bool Decoder::SkipPropertyValue() {
     }
     case Marker::TYPE_TEMPORAL_DATA: {
       return !!ReadTemporalData(*this);
+    }
+    case Marker::TYPE_TIMESPAN: {
+      auto inner_marker = ReadMarker();
+      if (!inner_marker || *inner_marker != Marker::TYPE_TIMESPAN) return false;
+
+      const auto microseconds_first = ReadUint();
+      if (!microseconds_first) return false;
+
+      const auto microseconds_second = ReadUint();
+      if (!microseconds_second) return false;
+
+      return !!ReadPropertyValue();
+
     }
 
     case Marker::TYPE_PROPERTY_VALUE:

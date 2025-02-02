@@ -102,7 +102,8 @@ enum class Type : uint8_t {
   STRING = 0x50,
   LIST = 0x60,
   MAP = 0x70,
-  TEMPORAL_DATA = 0x80
+  TEMPORAL_DATA = 0x80,
+  TIMESPAN = 0x90,
 };
 
 const uint8_t kMaskType = 0xf0;
@@ -466,8 +467,28 @@ std::optional<std::pair<Type, Size>> EncodePropertyValue(Writer *writer, const P
       // We don't need payload size so we set it to a random value
       return {{Type::TEMPORAL_DATA, Size::INT8}};
     }
+    case PropertyValue::Type::TimeSpan: {
+      auto metadata = writer->WriteMetadata();
+      if (!metadata) return std::nullopt;
+
+      const auto timespan = value.ValueTimeSpan();
+      auto first_first = writer->WriteInt(timespan.first.first.get_microseconds());
+      if (!first_first) return std::nullopt;
+
+      auto first_second = writer->WriteInt(timespan.first.second.get_microseconds());
+      if (!first_second) return std::nullopt;
+
+      auto ret = EncodePropertyValue(writer, *timespan.second);
+      if (!ret) return std::nullopt;
+      metadata->Set({ret->first, Size::INT64, ret->second});
+
+      // We don't need payload size so we set it to a random value
+      return {{Type::TIMESPAN, Size::INT8}};
+    }
   }
 }
+
+
 
 namespace {
 std::optional<TemporalData> DecodeTemporalData(Reader &reader) {
@@ -482,6 +503,7 @@ std::optional<TemporalData> DecodeTemporalData(Reader &reader) {
 
   return TemporalData{static_cast<TemporalType>(*type_value), *microseconds_value};
 }
+
 
 }  // namespace
 
@@ -603,6 +625,30 @@ std::optional<TemporalData> DecodeTemporalData(Reader &reader) {
 
       return true;
     }
+    case Type::TIMESPAN: {
+      auto metadata = reader->ReadMetadata();
+      if (!metadata ) return false;
+
+      std::optional<int64_t> first_first_value = reader->ReadInt(Size::INT64);
+      if (!first_first_value) return false;
+
+      std::optional<int64_t> first_second_value = reader->ReadInt(Size::INT64);
+      if (!first_second_value) return false;
+
+      utils::VTDateTime first_vt(*first_first_value), second_vt(*first_second_value);
+
+      PropertyValue* item = new PropertyValue();
+      if (!DecodePropertyValue(reader, metadata->type, metadata->payload_size, item))
+        return false;
+
+      auto maybe_timespan = std::pair<utils::TimeSpan, PropertyValue*>{utils::TimeSpan(first_vt, second_vt), item};
+
+      if (value) {
+        *value = PropertyValue(maybe_timespan);
+      }
+
+      return true;
+    }
   }
 }
 
@@ -702,6 +748,28 @@ std::optional<TemporalData> DecodeTemporalData(Reader &reader) {
       }
 
       return *maybe_temporal_data == value.ValueTemporalData();
+    }
+    case Type::TIMESPAN: {
+      if (!value.IsTimeSpan()) return false;
+
+      auto metadata = reader->ReadMetadata();
+      if (!metadata ) return false;
+
+      std::optional<int64_t> first_first_value = reader->ReadInt(Size::INT64);
+      if (!first_first_value) return false;
+
+      std::optional<int64_t> first_second_value = reader->ReadInt(Size::INT64);
+      if (!first_second_value) return false;
+
+      utils::VTDateTime first_vt(*first_first_value), second_vt(*first_second_value);
+
+      PropertyValue* item = new PropertyValue();
+      if (!DecodePropertyValue(reader, metadata->type, metadata->payload_size, item))
+        return false;
+
+      auto maybe_timespan = std::pair<utils::TimeSpan, PropertyValue*>{utils::TimeSpan(first_vt, second_vt), item};
+
+      return maybe_timespan == value.ValueTimeSpan();
     }
   }
 }

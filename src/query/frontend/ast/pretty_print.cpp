@@ -99,6 +99,8 @@ void PrintObject(std::ostream *out, const std::vector<T> &vec);
 template <typename K, typename V>
 void PrintObject(std::ostream *out, const std::map<K, V> &map);
 
+void PrintObject(std::ostream *out, const std::pair<utils::TimeSpan, storage::PropertyValue*>& timespan);
+
 template <typename T>
 void PrintObject(std::ostream *out, const T &arg) {
   static_assert(!std::is_convertible<T, Expression *>::value,
@@ -156,6 +158,10 @@ void PrintObject(std::ostream *out, const storage::PropertyValue &value) {
     case storage::PropertyValue::Type::TemporalData:
       PrintObject(out, value.ValueTemporalData());
       break;
+    case storage::PropertyValue::Type::TimeSpan:
+      PrintObject(out, value.ValueTimeSpan());
+    break;
+
   }
 }
 
@@ -175,6 +181,15 @@ void PrintObject(std::ostream *out, const std::map<K, V> &map) {
     PrintObject(&stream, item.second);
   });
   *out << "}";
+}
+
+void PrintObject(std::ostream *out, const std::pair<utils::TimeSpan, storage::PropertyValue*>& timespan) {
+  *out << "{ (";
+  PrintObject(out, timespan.first.first);
+  *out << ", ";
+  PrintObject(out, timespan.first.second);
+  *out << ") ->  ";
+  PrintObject(out, timespan.second);
 }
 
 template <typename T>

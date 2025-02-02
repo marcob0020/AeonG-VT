@@ -157,6 +157,9 @@ class VertexAccessor final {
   /// @throw std::bad_alloc
   Result<std::map<PropertyId, PropertyValue>> Properties(View view, const utils::TemporalFilter& vt) const;
 
+ std::map<PropertyId, utils::valued_timeline<PropertyValue>> AllPropertiesTimeline(View view, const utils::TemporalFilter& vt) const;
+  Result<utils::timeline> AllObjectTimeline(View view, const utils::TemporalFilter& vt) const;
+
 
   /// @throw std::bad_alloc
   /// @throw std::length_error if the resulting vector exceeds

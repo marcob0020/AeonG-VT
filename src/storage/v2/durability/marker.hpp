@@ -28,6 +28,7 @@ enum class Marker : uint8_t {
   TYPE_MAP = 0x16,
   TYPE_PROPERTY_VALUE = 0x17,
   TYPE_TEMPORAL_DATA = 0x18,
+  TYPE_TIMESPAN = 0x19,
 
   SECTION_VERTEX = 0x20,
   SECTION_EDGE = 0x21,

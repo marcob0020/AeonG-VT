@@ -678,6 +678,13 @@ Result<std::vector<LabelId>> VertexAccessor::Labels(View view, const utils::Temp
   for (auto& label : vertex_->vt_store.Labels()) {
     vt_labels.insert({label, vertex_->vt_store.GetLabel(label, vt.get_span())});
   }
+  for (auto& label : vertex_->labels) {
+    if (vt_labels.find(label) == vt_labels.end()) {
+      utils::timeline label_vt(vt.get_span());
+      label_vt.add(vt.get_span());
+      vt_labels.emplace(label, label_vt);
+    }
+  }
 
   ApplyDeltasForRead(transaction_, delta, view, vt,  [&vt_range_obj, &deleted, &vt_labels](const Delta &delta, utils::TimeSpan vt_intersect) {
     switch (delta.action) {
@@ -1339,6 +1346,120 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
   if (!exists) return Error::NONEXISTENT_OBJECT;
   if (!for_deleted_ && deleted) return Error::DELETED_OBJECT;
   return std::move(properties_ret);
+}
+
+std::map<PropertyId, utils::valued_timeline<PropertyValue>> VertexAccessor::AllPropertiesTimeline(View view, const utils::TemporalFilter& vt) const {
+  bool exists = true;
+  bool deleted = false;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    delta = vertex_->delta;
+  }
+
+  std::map<PropertyId, utils::valued_timeline<PropertyValue>> properties;
+
+  for (auto& property : vertex_->vt_store.Properties()) {
+    utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt.get_span());
+
+    properties.emplace(property, vt_range_prop);
+  }
+  for (auto& property : vertex_->properties.Properties()) {
+    if (properties.find(property.first) == properties.end()) {
+      utils::valued_timeline<PropertyValue> vt;
+      vt.add(utils::TimeSpan(), property.second);
+      properties.emplace(property.first, vt);
+    }
+  }
+
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&vt_range_obj, &deleted, &properties, vt](const Delta &delta, utils::TimeSpan vt_intersection) {
+    switch (delta.action) {
+      case Delta::Action::SET_PROPERTY: {
+        auto it = properties.find(delta.property.key);
+        if (it != properties.end()) {
+          if (delta.property.value.IsNull()) {
+            // remove the property
+            properties[delta.property.key].remove(vt_intersection);
+          } else {
+            // set the value
+            properties[delta.property.key].add(vt_intersection, delta.property.value);
+          }
+        } else if (!delta.property.value.IsNull()) {
+          utils::valued_timeline<PropertyValue> vt_range_prop(vt.get_span());
+          vt_range_prop.add(vt_intersection, delta.property.value);
+
+          properties.emplace(delta.property.key, vt_range_prop);
+        }
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        vt_range_obj.remove(vt_intersection);
+        break;
+      }
+      case Delta::Action::RECREATE_OBJECT: {
+        vt_range_obj.add(vt_intersection);
+        break;
+      }
+      case Delta::Action::ADD_LABEL:
+      case Delta::Action::REMOVE_LABEL:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+    }
+  });
+  exists = vt_range_obj.has_any();
+  deleted = !exists;
+
+  for (auto& property : properties) {
+    if (!property.second.has_any())
+      properties.erase(property.first);
+  }
+
+  return properties;
+}
+
+Result<utils::timeline> VertexAccessor::AllObjectTimeline(View view, const utils::TemporalFilter& vt) const {
+  bool exists = true;
+  bool deleted = false;
+  Delta *delta = nullptr;
+  {
+    std::lock_guard<utils::SpinLock> guard(vertex_->lock);
+    deleted = vertex_->deleted;
+    delta = vertex_->delta;
+  }
+
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+
+  ApplyDeltasForRead(transaction_, delta, view, vt, [&vt_range_obj](const Delta &delta, utils::TimeSpan vt_intersection) {
+    switch (delta.action) {
+      case Delta::Action::SET_PROPERTY: {
+
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        vt_range_obj.remove(vt_intersection);
+        break;
+      }
+      case Delta::Action::RECREATE_OBJECT: {
+        vt_range_obj.add(vt_intersection);
+        break;
+      }
+      case Delta::Action::ADD_LABEL:
+      case Delta::Action::REMOVE_LABEL:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+    }
+  });
+
+  return std::move(vt_range_obj);
 }
 
 Result<std::vector<EdgeAccessor>> VertexAccessor::InEdges(View view, const std::vector<EdgeTypeId> &edge_types,

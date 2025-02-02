@@ -534,7 +534,9 @@ const PropertyValue kSmallestString = PropertyValue("");
 const PropertyValue kSmallestList = PropertyValue(std::vector<PropertyValue>());
 const PropertyValue kSmallestMap = PropertyValue(std::map<std::string, PropertyValue>());
 const PropertyValue kSmallestTemporalData =
-    PropertyValue(TemporalData{static_cast<TemporalType>(0), std::numeric_limits<int64_t>::min()});
+  PropertyValue(TemporalData{static_cast<TemporalType>(0), std::numeric_limits<int64_t>::min()});
+const PropertyValue kSmallestTimespanData =
+    PropertyValue(std::make_pair(utils::TimeSpan(utils::VTDateTime::min(), utils::VTDateTime::min()),nullptr));
 
 LabelPropertyIndex::Iterable::Iterable(utils::SkipList<Entry>::Accessor index_accessor, LabelId label,
                                        PropertyId property,
@@ -609,8 +611,11 @@ LabelPropertyIndex::Iterable::Iterable(utils::SkipList<Entry>::Accessor index_ac
         upper_bound_ = utils::MakeBoundExclusive(kSmallestTemporalData);
         break;
       case PropertyValue::Type::TemporalData:
-        // This is the last type in the order so we leave the upper bound empty.
+        upper_bound_ = utils::MakeBoundExclusive(kSmallestTimespanData);
         break;
+      case PropertyValue::Type::TimeSpan:
+        // This is the last type in the order so we leave the upper bound empty.
+          break;
     }
   }
   if (upper_bound_ && !lower_bound_) {
@@ -642,6 +647,9 @@ LabelPropertyIndex::Iterable::Iterable(utils::SkipList<Entry>::Accessor index_ac
       case PropertyValue::Type::TemporalData:
         lower_bound_ = utils::MakeBoundInclusive(kSmallestTemporalData);
         break;
+      case PropertyValue::Type::TimeSpan:
+        lower_bound_ = utils::MakeBoundInclusive(kSmallestTimespanData);
+      break;
     }
   }
 }

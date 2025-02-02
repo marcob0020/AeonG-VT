@@ -422,6 +422,7 @@ namespace utils {
         return prev;
       }
       prev = it;
+      ++it;
     }
     return std::nullopt;
   }
@@ -438,6 +439,7 @@ namespace utils {
         return prev;
       }
       prev = it;
+      ++it;
     }
     return std::nullopt;
   }

@@ -617,6 +617,21 @@ mgp_value::mgp_value(const storage::PropertyValue &pv, utils::MemoryResource *m)
         }
       }
     }
+    case storage::PropertyValue::Type::TimeSpan: {
+      // Fill the stack allocated container and then construct the actual member
+      // value. This handles the case when filling the container throws
+      // something and our destructor doesn't get called so member value isn't
+      // released.
+      type = MGP_VALUE_TYPE_LIST;
+      utils::pmr::vector<mgp_value> elems(m);
+      // elems.reserve(3);
+      // elems.emplace_back(pv.ValueTimeSpan().first.first.get_microseconds(),m);
+      // elems.emplace_back(pv.ValueTimeSpan().first.first.get_microseconds(),m);
+      // elems.emplace_back(*pv.ValueTimeSpan().second);
+      utils::Allocator<mgp_list> allocator(m);
+      list_v = allocator.new_object<mgp_list>(std::move(elems));
+      break;
+    }
   }
 }
 

@@ -27,6 +27,9 @@
 #include <cppitertools/imap.hpp>
 
 #include "query/plan/operator.hpp"
+
+#include <communication/bolt/v1/value.hpp>
+
 #include "query/context.hpp"
 #include "query/db_accessor.hpp"
 #include "query/exceptions.hpp"
@@ -676,6 +679,7 @@ UniqueCursorPtr ScanAllByLabelPropertyRange::MakeCursor(utils::MemoryResource *m
           case storage::PropertyValue::Type::Double:
           case storage::PropertyValue::Type::String:
           case storage::PropertyValue::Type::TemporalData:
+          case storage::PropertyValue::Type::TimeSpan:
             // These are all fine, there's also Point, Date and Time data types
             // which were added to Cypher, but we don't have support for those
             // yet.
@@ -2803,6 +2807,40 @@ std::vector<Symbol> Produce::ModifiedSymbols(const SymbolTable &table) const { r
 Produce::ProduceCursor::ProduceCursor(const Produce &self, utils::MemoryResource *mem)
     : self_(self), input_cursor_(self_.input_->MakeCursor(mem)) {}
 
+storage::HistoryVertex createHistoryVertexFromVertex(VertexAccessor &vertex, const utils::TemporalFilter &filter, DbAccessor &accessor) {
+  storage::HistoryVertex history_vertex;
+  for (const auto props : vertex.PropertiesVt(storage::View::NEW, filter)) {
+    std::vector<storage::PropertyValue> values;
+    for (const auto& props_timespans: props.second) {
+      if (props_timespans.second == storage::PropertyValue())
+        continue;
+      values.emplace_back(props_timespans);
+
+    }
+    if (!values.empty()) {
+      history_vertex.properties.emplace(props.first, values);
+    }
+
+  }
+
+  utils::timeline object_timeline = vertex.ObjectVt(storage::View::NEW, filter).GetValue();
+
+  std::vector<storage::PropertyValue> values;
+  for (const auto& ts : object_timeline) {
+    values.emplace_back(std::make_pair(ts, storage::PropertyValue(true)));
+  }
+  if (!values.empty()) {
+    history_vertex.properties.emplace(accessor.NameToProperty("Vertex.Timeline"), values);
+  }
+
+  auto labels = vertex.Labels(storage::View::NEW).GetValue();
+
+  history_vertex.labels.insert(history_vertex.labels.end(), labels.begin(), labels.end());
+
+  return history_vertex;
+
+}
+
 bool Produce::ProduceCursor::Pull(Frame &frame, ExecutionContext &context) {
   SCOPED_PROFILE_OP("Produce");
 
@@ -2812,10 +2850,22 @@ bool Produce::ProduceCursor::Pull(Frame &frame, ExecutionContext &context) {
                                   storage::View::NEW);
     for (auto named_expr : self_.named_expressions_) named_expr->Accept(evaluator);
 
+    for (int i = 0; i != frame.elems().size(); i++) {
+      if (frame.elems()[i].IsVertex()) {
+        auto& vertex = frame.elems()[i].ValueVertex();
+        if (vertex.HasTemporalFeatures())
+          frame.elems().at(i) = createHistoryVertexFromVertex(vertex, context.addition_vt, *context.db_accessor);
+      }
+
+    }
+
+
     return true;
   }
   return false;
 }
+
+
 
 void Produce::ProduceCursor::Shutdown() {
   input_cursor_->Shutdown(); 

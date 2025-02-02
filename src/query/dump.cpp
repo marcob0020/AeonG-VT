@@ -159,6 +159,15 @@ void DumpPropertyValue(std::ostream *os, const storage::PropertyValue &value) {
       DumpTemporalData(*os, value.ValueTemporalData());
       return;
     }
+    case storage::PropertyValue::Type::TimeSpan: {
+      const auto& timespan = value.ValueTimeSpan();
+      *os << "{ (";
+      *os << timespan.first.first.get_microseconds() << ",";
+      *os << timespan.first.second << " ) -> ";
+      DumpPropertyValue(os, *timespan.second);
+      *os << "}";
+      return;
+    }
   }
 }
 

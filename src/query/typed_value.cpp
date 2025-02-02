@@ -98,6 +98,16 @@ TypedValue::TypedValue(const storage::PropertyValue &value, utils::MemoryResourc
       }
       return;
     }
+    case storage::PropertyValue::Type::TimeSpan: {
+      const auto &timespan_data = value.ValueTimeSpan();
+      type_ = Type::List;
+      new (&list_v) TVector(memory_);
+      list_v.reserve(3);
+      list_v.emplace_back(timespan_data.first.first.get_microseconds());
+      list_v.emplace_back(timespan_data.first.second.get_microseconds());
+      list_v.emplace_back(*timespan_data.second);
+      return;
+    }
   }
   LOG_FATAL("Unsupported type");
 }
@@ -171,6 +181,16 @@ TypedValue::TypedValue(storage::PropertyValue &&other, utils::MemoryResource *me
           break;
         }
       }
+      break;
+    }
+    case storage::PropertyValue::Type::TimeSpan: {
+      const auto &timespan_data = other.ValueTimeSpan();
+      type_ = Type::List;
+      new (&list_v) TVector(memory_);
+      list_v.reserve(3);
+      list_v.emplace_back(timespan_data.first.first.get_microseconds());
+      list_v.emplace_back(timespan_data.first.second.get_microseconds());
+      list_v.emplace_back(*timespan_data.second);
       break;
     }
   }

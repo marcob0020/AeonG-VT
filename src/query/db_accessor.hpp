@@ -200,6 +200,10 @@ class VertexAccessor final {
     return impl_.Labels(view);
   }
 
+  auto ObjectVt(storage::View view, const utils::TemporalFilter& vt) const {
+    return impl_.AllObjectTimeline(view, vt);
+  }
+
   storage::Result<bool> AddLabel(storage::LabelId label) {
     if (impl_.HasTemporalFeatures())
       return impl_.AddLabel(label, utils::TimeSpan());
@@ -246,6 +250,12 @@ class VertexAccessor final {
     if (impl_.HasTemporalFeatures())
       return impl_.Properties(view, vt);
     return impl_.Properties(view);
+  }
+
+  auto PropertiesVt(storage::View view, const utils::TemporalFilter& vt) const {
+    auto a = impl_.AllPropertiesTimeline(view, vt);
+
+    return a;
   }
 
   storage::Result<storage::PropertyValue> GetProperty(storage::View view, storage::PropertyId key) const {

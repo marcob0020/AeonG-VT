@@ -32,7 +32,7 @@ bool TemporalFlagSet(Edge* edge_, utils::TimeSpan span, int n_deltas) {
   return ret;
 }
 
-utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan &vt) {
+utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan &vt) const {
   utils::valued_timeline<storage::PropertyValue> coverage(vt);
 
   coverage = edge_.ptr->vt_store.GetProperty(property_id, vt);
@@ -45,9 +45,9 @@ utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(st
     bool delta_is_edge=false;
     switch (before_delta->action) {
       case storage::Delta::Action::SET_PROPERTY: {
-        if (before_delta->property.key != property_id)
-          continue;
-        coverage.add(before_delta->vt, before_delta->property.value);
+        if (before_delta->property.key == property_id) {
+          coverage.add(before_delta->vt, before_delta->property.value);
+        }
         break;
       }
       default:break;
@@ -504,7 +504,7 @@ Result<utils::valued_timeline<PropertyValue>> EdgeAccessor::GetProperty(Property
   bool exists = true;
   bool deleted = false;
   PropertyValue value;
-  utils::valued_timeline<PropertyValue> res;
+  utils::valued_timeline<PropertyValue> res = PropertyTimeline(property, vt.get_span());
   if (!config_.properties_on_edges) return res;
 
   Delta *delta = nullptr;

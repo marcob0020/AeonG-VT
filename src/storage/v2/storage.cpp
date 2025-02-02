@@ -139,13 +139,22 @@ nlohmann::json SerializePropertyValue(const storage::PropertyValue &property_val
       return SerializePropertyValueVector(property_value.ValueList());
     case Type::Map:
       return SerializePropertyValueMap(property_value.ValueMap());
-    case Type::TemporalData:
+    case Type::TemporalData: {
       const auto temporal_data = property_value.ValueTemporalData();
       auto data = nlohmann::json::object();
       data.emplace("type", static_cast<uint64_t>(ObjectType::TEMPORAL_DATA));
       data.emplace("value", nlohmann::json::object({{"type", static_cast<uint64_t>(temporal_data.type)},
                                                     {"microseconds", temporal_data.microseconds}}));
       return data;
+    }
+    case Type::TimeSpan:{
+      const auto timespan_data = property_value.ValueTimeSpan();
+      auto ts_data = nlohmann::json::object();
+      ts_data.emplace("vt-first", timespan_data.first.first.get_microseconds());
+      ts_data.emplace("vt-second", timespan_data.first.second.get_microseconds());
+      ts_data.emplace("value", SerializePropertyValue(*timespan_data.second));
+      return ts_data;
+    }
   }
 }
 

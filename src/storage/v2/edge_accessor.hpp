@@ -170,7 +170,7 @@ class EdgeAccessor final {
   // All the write operations will still return an error if it's called for a deleted edge.
   bool for_deleted_{false};
 
-  utils::valued_timeline<storage::PropertyValue> PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan& vt);
+  utils::valued_timeline<storage::PropertyValue> PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan& vt) const;
 };
 
 }  // namespace storage

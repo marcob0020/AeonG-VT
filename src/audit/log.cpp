@@ -88,6 +88,16 @@ inline nlohmann::json PropertyValueToJson(const storage::PropertyValue &pv) {
       ret = to_string(temporal_data);
       break;
     }
+    case storage::PropertyValue::Type::TimeSpan: {
+      const auto timespan_data = pv.ValueTimeSpan();
+      auto ret_a = nlohmann::json::array();
+
+      ret_a.emplace_back(timespan_data.first.first.get_microseconds());
+      ret_a.emplace_back(timespan_data.first.second.get_microseconds());
+      ret_a.emplace_back(PropertyValueToJson(*timespan_data.second));
+
+      ret = ret_a;
+    }
   }
   return ret;
 }

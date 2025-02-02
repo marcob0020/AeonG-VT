@@ -19,6 +19,7 @@
 #include "storage/v2/temporal.hpp"
 #include "utils/algorithm.hpp"
 #include "utils/exceptions.hpp"
+#include "utils/timespan.hpp"
 
 namespace storage {
 
@@ -51,7 +52,8 @@ class PropertyValue {
     String = 4,
     List = 5,
     Map = 6,
-    TemporalData = 7
+    TemporalData = 7,
+    TimeSpan = 8
   };
 
   static bool AreComparableTypes(Type a, Type b) {
@@ -79,9 +81,19 @@ class PropertyValue {
   explicit PropertyValue(const std::vector<PropertyValue> &value) : type_(Type::List) {
     new (&list_v) std::vector<PropertyValue>(value);
   }
+
   /// @throw std::bad_alloc
   explicit PropertyValue(const std::map<std::string, PropertyValue> &value) : type_(Type::Map) {
     new (&map_v) std::map<std::string, PropertyValue>(value);
+  }
+
+
+  explicit PropertyValue(const std::pair<utils::TimeSpan, PropertyValue*>&  value) : type_{Type::TimeSpan} {
+    timespan_v = value;
+  }
+
+  explicit PropertyValue(const std::pair<utils::TimeSpan, PropertyValue>&  value) : type_{Type::TimeSpan} {
+    timespan_v = std::make_pair(value.first, new PropertyValue(value.second));
   }
 
   // move constructors for non-primitive types
@@ -93,6 +105,10 @@ class PropertyValue {
   }
   explicit PropertyValue(std::map<std::string, PropertyValue> &&value) noexcept : type_(Type::Map) {
     new (&map_v) std::map<std::string, PropertyValue>(std::move(value));
+  }
+  explicit PropertyValue(std::pair<utils::TimeSpan, PropertyValue*>&&  value) : type_{Type::TimeSpan} {
+    timespan_v = value;
+    value.second = nullptr;
   }
 
   // copy constructor
@@ -124,6 +140,7 @@ class PropertyValue {
   bool IsList() const { return type_ == Type::List; }
   bool IsMap() const { return type_ == Type::Map; }
   bool IsTemporalData() const { return type_ == Type::TemporalData; }
+  bool IsTimeSpan() const { return type_ == Type::TimeSpan; }
 
   // value getters for primitive types
   /// @throw PropertyValueException if value isn't of correct type.
@@ -182,6 +199,14 @@ class PropertyValue {
     return map_v;
   }
 
+  /// @throw PropertyValueException if value isn't of correct type.
+  const std::pair<utils::TimeSpan, PropertyValue*> &ValueTimeSpan() const {
+    if (type_ != Type::TimeSpan) {
+      throw PropertyValueException("The value isn't a timespan!");
+    }
+    return timespan_v;
+  }
+
   // reference value getters for non-primitive types
   /// @throw PropertyValueException if value isn't of correct type.
   std::string &ValueString() {
@@ -207,6 +232,14 @@ class PropertyValue {
     return map_v;
   }
 
+  /// @throw PropertyValueException if value isn't of correct type.
+  std::pair<utils::TimeSpan, PropertyValue*> &ValueTimeSpan() {
+    if (type_ != Type::TimeSpan) {
+      throw PropertyValueException("The value isn't a timespan!");
+    }
+    return timespan_v;
+  }
+
  private:
   void DestroyValue() noexcept;
 
@@ -218,6 +251,7 @@ class PropertyValue {
     std::vector<PropertyValue> list_v;
     std::map<std::string, PropertyValue> map_v;
     TemporalData temporal_data_v;
+    std::pair<utils::TimeSpan, PropertyValue*> timespan_v;
   };
 
   Type type_;
@@ -243,6 +277,8 @@ inline std::ostream &operator<<(std::ostream &os, const PropertyValue::Type type
       return os << "map";
     case PropertyValue::Type::TemporalData:
       return os << "temporal data";
+    case PropertyValue::Type::TimeSpan:
+      return os << "timespan";
   }
 }
 /// @throw anything std::ostream::operator<< may throw.
@@ -270,6 +306,9 @@ inline std::ostream &operator<<(std::ostream &os, const PropertyValue &value) {
     case PropertyValue::Type::TemporalData:
       return os << fmt::format("type: {}, microseconds: {}", TemporalTypeTostring(value.ValueTemporalData().type),
                                value.ValueTemporalData().microseconds);
+    case PropertyValue::Type::TimeSpan:
+      return os << "{ (" << value.ValueTimeSpan().first.first << ", " << value.ValueTimeSpan().first.second << ") -> "
+            << *value.ValueTimeSpan().second << "}";
   }
 }
 
@@ -303,6 +342,8 @@ inline bool operator==(const PropertyValue &first, const PropertyValue &second) 
       return first.ValueMap() == second.ValueMap();
     case PropertyValue::Type::TemporalData:
       return first.ValueTemporalData() == second.ValueTemporalData();
+    case PropertyValue::Type::TimeSpan:
+      return first.ValueTimeSpan() == second.ValueTimeSpan();
   }
 }
 
@@ -333,6 +374,8 @@ inline bool operator<(const PropertyValue &first, const PropertyValue &second) n
       return first.ValueMap() < second.ValueMap();
     case PropertyValue::Type::TemporalData:
       return first.ValueTemporalData() < second.ValueTemporalData();
+    case PropertyValue::Type::TimeSpan:
+      return first.ValueTimeSpan().first.first < second.ValueTimeSpan().first.first;
   }
 }
 
@@ -360,6 +403,9 @@ inline PropertyValue::PropertyValue(const PropertyValue &other) : type_(other.ty
       return;
     case Type::TemporalData:
       this->temporal_data_v = other.temporal_data_v;
+      return;
+    case Type::TimeSpan:
+      this->timespan_v = std::make_pair(other.timespan_v.first, new PropertyValue(*other.timespan_v.second));
       return;
   }
 }
@@ -389,6 +435,12 @@ inline PropertyValue::PropertyValue(PropertyValue &&other) noexcept : type_(othe
     case Type::TemporalData:
       this->temporal_data_v = other.temporal_data_v;
       break;
+    case Type::TimeSpan: {
+      this->timespan_v = other.timespan_v;
+      other.timespan_v.second = nullptr;
+    }
+
+    break;
   }
 
   // reset the type of other
@@ -426,6 +478,9 @@ inline PropertyValue &PropertyValue::operator=(const PropertyValue &other) {
     case Type::TemporalData:
       this->temporal_data_v = other.temporal_data_v;
       break;
+    case Type::TimeSpan:
+      this->timespan_v = std::make_pair(other.timespan_v.first, new PropertyValue(*other.timespan_v.second));
+      break;
   }
 
   return *this;
@@ -461,6 +516,11 @@ inline PropertyValue &PropertyValue::operator=(PropertyValue &&other) noexcept {
     case Type::TemporalData:
       this->temporal_data_v = other.temporal_data_v;
       break;
+    case Type::TimeSpan:{
+      this->timespan_v = other.timespan_v;
+      other.timespan_v.second = nullptr;
+      break;
+    }
   }
 
   // reset the type of other
@@ -490,6 +550,14 @@ inline void PropertyValue::DestroyValue() noexcept {
     case Type::Map:
       std::destroy_at(&map_v);
       return;
+    case Type::TimeSpan: {
+      PropertyValue* ptr = this->timespan_v.second;
+      delete ptr;
+
+    }
+
+
+    return;
   }
 }
 

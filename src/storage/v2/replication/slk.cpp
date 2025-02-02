@@ -99,6 +99,14 @@ void Save(const storage::PropertyValue &value, slk::Builder *builder) {
       slk::Save(temporal_data.microseconds, builder);
       return;
     }
+    case storage::PropertyValue::Type::TimeSpan: {
+      slk::Save(storage::PropertyValue::Type::TimeSpan, builder);
+      const auto timespan_data = value.ValueTimeSpan();
+      slk::Save(timespan_data.first.first.get_microseconds(), builder);
+      slk::Save(timespan_data.first.second.get_microseconds(), builder);
+      slk::Save(timespan_data.second, builder);
+      return;
+    }
   }
 }
 
@@ -161,6 +169,17 @@ void Load(storage::PropertyValue *value, slk::Reader *reader) {
       int64_t microseconds{0};
       slk::Load(&microseconds, reader);
       *value = storage::PropertyValue(storage::TemporalData{temporal_type, microseconds});
+      return;
+    }
+    case storage::PropertyValue::Type::TimeSpan: {
+      std::pair<utils::TimeSpan, storage::PropertyValue*> timespan;
+      int64_t microseconds_first, microseconds_second;
+      slk::Load(&microseconds_first, reader);
+      slk::Load(&microseconds_second, reader);
+      storage::PropertyValue timespan_value;
+      utils::VTDateTime first(microseconds_first), second(microseconds_second);
+      slk::Load(&timespan_value, reader);
+      *value = storage::PropertyValue(std::make_pair(utils::TimeSpan(first, second), new storage::PropertyValue(std::move(timespan_value))));
       return;
     }
   }

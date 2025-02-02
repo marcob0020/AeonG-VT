@@ -305,7 +305,7 @@ Value ToBoltValue(const storage::PropertyValue &value) {
       return Value(value.ValueBool());
     case storage::PropertyValue::Type::Int:
       return Value(value.ValueInt());
-      break;
+    break;
     case storage::PropertyValue::Type::Double:
       return Value(value.ValueDouble());
     case storage::PropertyValue::Type::String:
@@ -327,7 +327,7 @@ Value ToBoltValue(const storage::PropertyValue &value) {
       }
       return Value(std::move(dv_map));
     }
-    case storage::PropertyValue::Type::TemporalData:
+    case storage::PropertyValue::Type::TemporalData:{
       const auto &type = value.ValueTemporalData();
       switch (type.type) {
         case storage::TemporalType::Date:
@@ -341,6 +341,14 @@ Value ToBoltValue(const storage::PropertyValue &value) {
         case storage::TemporalType::VtDateTime:
           return Value(utils::VTDateTime(type.microseconds));
       }
+      break;
+    }
+    case storage::PropertyValue::Type::TimeSpan: {
+      std::stringstream ss;
+      ss << value;
+      return Value(ss.str());
+    }
+
   }
 }
 
