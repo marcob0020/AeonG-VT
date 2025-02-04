@@ -306,9 +306,16 @@ inline std::ostream &operator<<(std::ostream &os, const PropertyValue &value) {
     case PropertyValue::Type::TemporalData:
       return os << fmt::format("type: {}, microseconds: {}", TemporalTypeTostring(value.ValueTemporalData().type),
                                value.ValueTemporalData().microseconds);
-    case PropertyValue::Type::TimeSpan:
-      return os << "{ (" << value.ValueTimeSpan().first.first << ", " << value.ValueTimeSpan().first.second << ") -> "
+    case PropertyValue::Type::TimeSpan: {
+      if (value.ValueTimeSpan().first.first == value.ValueTimeSpan().first.second) {
+        return os << "{ (" <<  value.ValueTimeSpan().first.first  << ") -> "
             << *value.ValueTimeSpan().second << "}";
+      }else {
+        return os << "{ (" <<  value.ValueTimeSpan().first.first << ", " << value.ValueTimeSpan().first.second << ") -> "
+            << *value.ValueTimeSpan().second << "}";
+      }
+    }
+
   }
 }
 

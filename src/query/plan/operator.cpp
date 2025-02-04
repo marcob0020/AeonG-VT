@@ -2833,6 +2833,9 @@ storage::HistoryVertex createHistoryVertexFromVertex(VertexAccessor &vertex, con
     history_vertex.properties.emplace(accessor.NameToProperty("Vertex.Timeline"), values);
   }
 
+  history_vertex.properties.emplace(accessor.NameToProperty("TT.start"), storage::PropertyValue(static_cast<int64_t>(vertex.transaction_st())));
+  history_vertex.properties.emplace(accessor.NameToProperty("TT.end"), storage::PropertyValue(std::numeric_limits<int64_t>::max()));
+
   auto labels = vertex.Labels(storage::View::NEW).GetValue();
 
   history_vertex.labels.insert(history_vertex.labels.end(), labels.begin(), labels.end());

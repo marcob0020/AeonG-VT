@@ -48,27 +48,33 @@ DEFINE_bool(queries_json, false,
 
 DEFINE_string(input, "", "Input file. By default stdin is used.");
 DEFINE_string(output, "", "Output file. By default stdout is used.");
-std::string bolt_value_to_string(const communication::bolt::Value& v);
+std::string bolt_value_to_string(const communication::bolt::Value& v, int indent = 0);
 
-std::string list_to_string(const std::vector<communication::bolt::Value>& v){
+std::string list_to_string(const std::vector<communication::bolt::Value>& v, int indent = 0){
   bool f = true;
   std::string r ;
 
-  r = "[";
+  std::string indents = "";
+
+  for (int i = 0; i!= indent; ++i) {
+    indents += "\t";
+  }
+
+  r = "[\n";
   for (auto& x: v){
     if (!f)
-      r = r + "," + bolt_value_to_string(x);
+      r = r + "\n" + indents  + bolt_value_to_string(x, indent + 1) + ",";
     else
-      r = r + bolt_value_to_string(x);
+      r = r  + indents + bolt_value_to_string(x, indent + 1) + ",";
 
     f = false;
   }
-  r = r + "]";
+  r = r + "\n" + indents + "]";
 
   return r;
 }
 
-std::string bolt_value_to_string(const communication::bolt::Value& v){
+std::string bolt_value_to_string(const communication::bolt::Value& v, int indent){
   std::string r;
 
   std::stringstream ss;
@@ -96,15 +102,15 @@ std::string bolt_value_to_string(const communication::bolt::Value& v){
       r = v.ValueString();
       break;
     case Type::List:
-      r = list_to_string(v.ValueList());
+      r = list_to_string(v.ValueList(), indent+1);
       break;
     case Type::Map:
       r = "{";
       for (auto [key,value]: v.ValueMap()){
         if (!f)
-          r = r + "," + key + ":" + bolt_value_to_string(value);
+          r = r + "," + key + ":" + bolt_value_to_string(value, indent+1);
         else
-          r = r + key + ":" + bolt_value_to_string(value);
+          r = r + key + ":" + bolt_value_to_string(value, indent+1);
 
         f = false;
       }
@@ -129,13 +135,13 @@ std::string bolt_value_to_string(const communication::bolt::Value& v){
 
         for (auto [key,value]: vx.properties){
           if (!f)
-            r = r + "," + key + ":" + bolt_value_to_string(value);
+            r = r + "\n\t," + key + ":" + bolt_value_to_string(value, indent);
           else
-            r = r + key + ":" + bolt_value_to_string(value);
+            r = r + "\n\t" + key + ":" + bolt_value_to_string(value, indent);
 
           f = false;
         }
-        r = r + "})";
+        r = r + "\n})";
       }
       break;
     default:
@@ -145,7 +151,13 @@ std::string bolt_value_to_string(const communication::bolt::Value& v){
   if (ssu)
     ss >> r;
 
-  return r;
+  std::string indents = "";
+
+  for (int i = 0; i!= indent; ++i) {
+    indents += "\t";
+  }
+
+  return indents + r;
 }
 
 std::pair<std::map<std::string, communication::bolt::Value>, uint64_t> ExecuteNTimesTillSuccess(
