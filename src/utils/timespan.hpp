@@ -23,7 +23,7 @@ struct TimeSpan {
   }
 
   bool overlaps(const TimeSpan &other) const {
-    return first <= other.second && other.first <= second;
+    return first < other.second && other.first < second;
   }
 
   bool overlaps_strict(const TimeSpan &other) const {

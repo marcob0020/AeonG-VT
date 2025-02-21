@@ -73,7 +73,7 @@ namespace utils{
           case TemporalQueryType::NONE:
             return VTDateTime::max();
           case TemporalQueryType::AS_OF:
-            return first;
+            return utils::VTDateTime::next(first);
           default:
             return second;
         }

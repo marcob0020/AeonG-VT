@@ -167,14 +167,14 @@ namespace utils {
         }else {
           if (itx->first < vt.first) {
             if (itx->second > vt.second) {
-              v_new.emplace_back(VTDateTime::next(vt.second), itx->second);
-              itx->second = VTDateTime::prev(vt.first);
+              v_new.emplace_back(vt.second, itx->second);
+              itx->second = vt.first;
               edit_vt = itx;
               break;
             }
 
             if (itx->second <= vt.second) {
-              itx->second = VTDateTime::prev(vt.first);
+              itx->second = vt.first;
             }
 
           } else if (itx->first >= vt.first) {
@@ -185,7 +185,7 @@ namespace utils {
               }
               delete_end = itx;
             }else {
-              itx->first = VTDateTime::next(vt.second);
+              itx->first = vt.second;
               break;
             }
           }
@@ -193,9 +193,9 @@ namespace utils {
 
       }
 
-      if (vt.second < itx->first) {
+      if (vt.second <= itx->first) {
         if (vt_written) {
-          if (itx->first == VTDateTime::next(vt.second) && !inverse) {
+          if (itx->first == vt.second && !inverse) {
             edit_vt->second = itx->second;
 
             if (!deleting) {
@@ -322,7 +322,7 @@ namespace utils {
           }
 
           if (itx_end > vt.second) {
-            v_new.emplace_back(TimeSpan(VTDateTime::next(vt.second),itx_end), val);
+            v_new.emplace_back(TimeSpan(vt.second,itx_end), val);
           }
 
           if (!v_new.empty())
@@ -344,7 +344,7 @@ namespace utils {
             if (itx->second == value) {
               if (edit_start->second == value)
                 edit_start->first.second = VTDateTime::greater(vt.second, itx_end);
-              else {
+              //else {
                 if (deleting)
                   delete_end = itx;
                 else {
@@ -352,9 +352,9 @@ namespace utils {
                   delete_start = itx;
                   delete_end = itx;
                 }
-              }
+              //}
             }else {
-              itx->first.first = VTDateTime::next(vt.second);
+              itx->first.first = vt.second;
             }
 
             break;
@@ -371,7 +371,7 @@ namespace utils {
             vt_written = true;
             itx->first.second = utils::VTDateTime::greater(vt.second, itx_end);
           }else {
-            itx->first.second = VTDateTime::prev(vt.first);
+            itx->first.second = vt.first;
 
             if (itx_end >= vt.second) {
               v_new.emplace_back(vt, value);
@@ -384,7 +384,7 @@ namespace utils {
             vt_written = true;
             itx->first.first = utils::VTDateTime::less(vt.first, itx_start);
           }else {
-            itx->first.first = VTDateTime::next(vt.second);
+            itx->first.first = vt.second;
 
             v_new.emplace_back(vt, value);
             vt_written = true;
@@ -399,14 +399,14 @@ namespace utils {
 
       }
 
-      if ((itx_start == utils::VTDateTime::next(vt.second) || itx_end == utils::VTDateTime::prev(vt.first))&& itx->second == value && !vt_written) {
+      if ((itx_start == vt.second || itx_end == vt.first)&& itx->second == value && !vt_written) {
         edit_start = itx;
         itx->first.first = VTDateTime::less(vt.first, itx_start);
         itx->first.second = VTDateTime::greater(vt.second, itx_end);
         vt_written = true;
       }
 
-      if (itx_start > vt.second) {
+      if (itx_start >= vt.second) {
         if (!vt_written) {
           if (edit_start == timeline.end()) {
             edit_start = prev;
@@ -416,8 +416,8 @@ namespace utils {
           break;
         }
 
-        if (itx_start >= utils::VTDateTime::next(vt.second)) {
-          if (itx_start == utils::VTDateTime::next(vt.second) && itx->second == value) {
+        if (itx_start >= vt.second) {
+          if (itx_start == vt.second && itx->second == value) {
             if (edit_start->second == value)
               edit_start->first.second = VTDateTime::greater(vt.second, itx_end);
             if (edit_start != itx) {
