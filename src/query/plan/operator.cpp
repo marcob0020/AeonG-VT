@@ -2836,9 +2836,13 @@ storage::HistoryVertex createHistoryVertexFromVertex(VertexAccessor &vertex, con
   history_vertex.properties.emplace(accessor.NameToProperty("TT.start"), storage::PropertyValue(static_cast<int64_t>(vertex.transaction_st())));
   history_vertex.properties.emplace(accessor.NameToProperty("TT.end"), storage::PropertyValue(std::numeric_limits<int64_t>::max()));
 
-  auto labels = vertex.Labels(storage::View::NEW).GetValue();
+  auto labels = vertex.Labels(storage::View::NEW);
 
-  history_vertex.labels.insert(history_vertex.labels.end(), labels.begin(), labels.end());
+  if (labels.HasValue()) {
+    auto labels_val = labels.GetValue();
+    history_vertex.labels.insert(history_vertex.labels.end(), labels_val.begin(), labels_val.end());
+  }
+
 
   return history_vertex;
 

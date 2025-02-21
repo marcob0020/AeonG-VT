@@ -838,7 +838,7 @@ Result<std::vector<EdgeAccessor>> Storage::Accessor::Edges(std::vector<std::tupl
 }
 
 utils::timeline Storage::Accessor::VertexVt(const Vertex* vertex, const utils::TimeSpan& vt) {
-  utils::timeline coverage(vt);
+   utils::timeline coverage(vt);
 
   coverage = vertex->vt_store.GetObjectValidity(vt);
   if (!coverage.has_any()) {
