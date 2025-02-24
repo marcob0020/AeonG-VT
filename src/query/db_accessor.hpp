@@ -538,7 +538,7 @@ class DbAccessor final {
     return accessor_->CreateHistoryVertexFromKV(another,gid_delta_,historyContext_);
   }
 
-  storage::HistoryVertex CreateHistoryVertexFromDelta(const storage::VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> & may_props,history_delta::HistoryContext& historyContext_){
+  storage::HistoryVertex CreateHistoryVertexFromDelta(const storage::VertexAccessor &another,std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, utils::TimeSpan> & may_props,history_delta::HistoryContext& historyContext_){
     return accessor_->CreateHistoryVertexFromDelta(another,may_props,historyContext_);
   }
 
