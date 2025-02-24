@@ -571,6 +571,13 @@ namespace storage {
       serialization::DeserializeValuedList(decoder, properties_[*property]);
   }
 
+  // void VtStore::DeserializeIntoValidity(std::string val) {
+  //
+  // }
+  // void VtStore::DeserializeIntoInEdges(std::string val, std::optional<EdgeStoreType> edge);
+  // void VtStore::DeserializeIntoOutEdges(std::string val, std::optional<EdgeStoreType> edge);
+  // void VtStore::DeserializeIntoProperty(std::string val, std::optional<PropertyId> property);
+
 
 
   bool VtStore::DeleteLabel(LabelId label) {

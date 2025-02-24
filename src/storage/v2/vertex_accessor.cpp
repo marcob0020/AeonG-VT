@@ -329,6 +329,7 @@ Result<bool> VertexAccessor::AddLabel(LabelId label, const utils::TimeSpan& vt) 
     n_deltas++;
   }
 
+  n_deltas += ExtendValidity(vt, ts);
 
   if (std::find(vertex_->labels.begin(), vertex_->labels.end(), label) == vertex_->labels.end())
     vertex_->labels.push_back(label);
@@ -904,6 +905,8 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
     if (!current_value.IsNull())
       current_value_x = current_value;
   }
+
+  n_deltas += ExtendValidity(vt, ts);
 
   if (TemporalFlagSet(vertex_, vt, n_deltas))
     vertex_->vt_store.InitProperty(property, vertex_->properties.GetProperty(property));
@@ -1919,4 +1922,59 @@ utils::timeline VertexAccessor::LabelTimeline(storage::LabelId label_id, const u
   }
   return coverage;
 }
+
+int VertexAccessor::ExtendValidity(const utils::TimeSpan& vt, uint64_t ts) {
+  utils::TemporalFilter tf;
+  tf.first = vt.first;
+  tf.second = vt.second;
+  tf.type = utils::TemporalQueryType::FROM_TO;
+
+  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt);
+
+  ApplyDeltasForRead(transaction_, vertex_->delta, View::NEW, tf, [&vt_range_obj](const Delta &delta, utils::TimeSpan vt_intersection) {
+    switch (delta.action) {
+      case Delta::Action::SET_PROPERTY: {
+
+        break;
+      }
+      case Delta::Action::DELETE_OBJECT: {
+        vt_range_obj.remove(vt_intersection);
+        break;
+      }
+      case Delta::Action::RECREATE_OBJECT: {
+        vt_range_obj.add(vt_intersection);
+        break;
+      }
+      case Delta::Action::ADD_LABEL:
+      case Delta::Action::REMOVE_LABEL:
+      case Delta::Action::ADD_IN_EDGE:
+      case Delta::Action::ADD_OUT_EDGE:
+      case Delta::Action::REMOVE_IN_EDGE:
+      case Delta::Action::REMOVE_OUT_EDGE:
+        break;
+    }
+  });
+
+  return ExtendValidity(vt, vt_range_obj, ts);
+}
+
+int VertexAccessor::ExtendValidity(const utils::TimeSpan& vt, utils::timeline object_timeline, uint64_t ts) {
+  if (object_timeline.covered(vt))
+    return 0;
+
+  auto vt_range_obj = object_timeline.split(vt).invert();
+  int n_deltas = 0;
+
+  for (const auto& vti: vt_range_obj) {
+    auto delta=CreateAndLinkDelta(transaction_, vertex_, vti, vt, Delta::DeleteObjectTag());
+
+    delta->transaction_st=ts;
+    //save vertex to restore
+
+    n_deltas++;
+  }
+
+  return n_deltas;
+}
+
 }  // namespace storage

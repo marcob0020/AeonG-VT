@@ -215,6 +215,9 @@ class VertexAccessor final {
   utils::valued_timeline<storage::PropertyValue> PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan& vt) const;
 
   utils::timeline LabelTimeline(storage::LabelId label_id, const utils::TimeSpan& vt) const;
+
+  int ExtendValidity(const utils::TimeSpan& vt, uint64_t ts);
+  int ExtendValidity(const utils::TimeSpan &vt, utils::timeline object_timeline, uint64_t ts);
 };
 
 }  // namespace storage

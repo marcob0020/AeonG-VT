@@ -224,6 +224,11 @@ public:
   void SerializeToWriter(durability::BaseEncoder* encoder) const;
   std::map<std::string,std::string> SerializeToStrings() const;
 
+  // void DeserializeIntoValidity(std::string val);
+  // void DeserializeIntoInEdges(std::string val, std::optional<EdgeStoreType> edge);
+  // void DeserializeIntoOutEdges(std::string val, std::optional<EdgeStoreType> edge);
+  // void DeserializeIntoProperty(std::string val, std::optional<PropertyId> property);
+
   void DeserializeIntoValidity(durability::BaseDecoder* decoder);
   void DeserializeIntoInEdges(durability::BaseDecoder* decoder, std::optional<EdgeStoreType> edge);
   void DeserializeIntoOutEdges(durability::BaseDecoder* decoder, std::optional<EdgeStoreType> edge);
