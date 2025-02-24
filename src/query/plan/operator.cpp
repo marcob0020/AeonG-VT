@@ -81,6 +81,7 @@
 namespace history_delta{
 //extern bool TemporalCheck(uint64_t object_ts,uint64_t object_te,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType type);
 extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType types_);
+extern std::pair<std::vector< std::tuple< std::map<storage::PropertyId,storage::PropertyValue>,uint64_t,uint64_t, utils::TimeSpan> >,bool> getDeadInfo2(query::VertexAccessor current_vertex_,uint64_t c_ts,uint64_t c_te,utils::TemporalQueryType types_, const utils::TemporalFilter vt_filter);
 extern  std::vector<std::string> splits(const std::string &str, const std::string &pattern);
 };
 
@@ -430,7 +431,7 @@ bool addHistoryVertex(query::VertexAccessor &current_vertex_,history_delta::Hist
     storage::HistoryVertex current_vertex1;
     bool history_flag=false;
 
-    auto [dead_deltas,need_deleted_flag]=history_delta::getDeadInfo2(current_vertex_,historyContext_.c_ts, historyContext_.c_te,historyContext_.types);
+    auto [dead_deltas,need_deleted_flag]=history_delta::getDeadInfo2(current_vertex_,historyContext_.c_ts, historyContext_.c_te,historyContext_.types, historyContext_.vt);
     for (auto dead_delta:dead_deltas){
         current_vertex1=context.db_accessor->CreateHistoryVertexFromDelta((current_vertex_).impl_,dead_delta,historyContext_);
         history_flag=true;
@@ -461,7 +462,7 @@ bool addHistoryVertex2(query::VertexAccessor &current_vertex_,history_delta::His
   storage::HistoryVertex current_vertex1;
   bool history_flag=false;
 
-  auto [dead_deltas,need_deleted_flag]=history_delta::getDeadInfo2(current_vertex_,historyContext_.c_ts, historyContext_.c_te,historyContext_.types);
+  auto [dead_deltas,need_deleted_flag]=history_delta::getDeadInfo2(current_vertex_,historyContext_.c_ts, historyContext_.c_te,historyContext_.types, historyContext_.vt);
   for (auto dead_delta:dead_deltas){
     current_vertex1=context.db_accessor->CreateHistoryVertexFromDelta((current_vertex_).impl_,dead_delta,historyContext_);
     history_flag=true;
