@@ -307,7 +307,7 @@ void combineVertex(nlohmann::json before_data,nlohmann::json &current_data){
           current_info.emplace_back(before_label);
         }  
       }
-      else if(it_key=="VT") {
+      else if(it_key=="VTS") {
         auto &current_vt = current_data[it_key];
         for(const auto& before_vt:before_data[it_key]) {
           current_vt.emplace_back(before_vt);
