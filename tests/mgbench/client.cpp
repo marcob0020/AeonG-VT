@@ -48,6 +48,7 @@ DEFINE_bool(queries_json, false,
 
 DEFINE_string(input, "", "Input file. By default stdin is used.");
 DEFINE_string(output, "", "Output file. By default stdout is used.");
+DEFINE_bool(output_stdout, true, "Set to false to hide anything else than logs and metadata.");
 std::string bolt_value_to_string(const communication::bolt::Value& v, int indent = 0);
 
 std::string list_to_string(const std::vector<communication::bolt::Value>& v, int indent = 0){
@@ -162,24 +163,29 @@ std::string bolt_value_to_string(const communication::bolt::Value& v, int indent
 
 std::pair<std::map<std::string, communication::bolt::Value>, uint64_t> ExecuteNTimesTillSuccess(
     communication::bolt::Client *client, const std::string &query,
-    const std::map<std::string, communication::bolt::Value> &params, int max_attempts) {
+    const std::map<std::string, communication::bolt::Value> &params, int max_attempts, bool output) {
   for (uint64_t i = 0; i < max_attempts; ++i) {
     try {
       auto ret = client->Execute(query, params);
 
-      std::cout<<"Size: " << ret.records.size() << "\n";
+      if (output) {
+        std::cout<<"Size: " << ret.records.size() << "\n";
 
-      std::cout<<"Fields: " << ret.fields.size() << "\n";
-      for (int j = 0; j!= ret.fields.size();j++){
-        std::cout<<ret.fields[j]<<" - ";
-      }
-      std::cout<<"\nResult: \n";
-      for (auto j : ret.records){
-        for (auto k: j){
-          std::cout<<bolt_value_to_string(k)<<" - ";
+        std::cout<<"Fields: " << ret.fields.size() << "\n";
+
+        for (int j = 0; j!= ret.fields.size();j++){
+          std::cout<<ret.fields[j]<<" - ";
         }
-        std::cout<<"\n";
+        std::cout<<"\nResult: \n";
+        for (auto j : ret.records){
+          for (auto k: j){
+            std::cout<<bolt_value_to_string(k)<<" - ";
+          }
+          std::cout<<"\n";
+        }
       }
+
+
       return {std::move(ret.metadata), i};
     } catch (const utils::BasicException &e) {
       if (i == max_attempts - 1) {
@@ -316,7 +322,7 @@ void Execute(const std::vector<std::pair<std::string, std::map<std::string, comm
         auto pos = position.fetch_add(1, std::memory_order_acq_rel);
         if (pos >= size) break;
         const auto &query = queries[pos];
-        auto ret = ExecuteNTimesTillSuccess(&client, query.first, query.second, FLAGS_max_retries);
+        auto ret = ExecuteNTimesTillSuccess(&client, query.first, query.second, FLAGS_max_retries, FLAGS_output_stdout);
         retries += ret.second;
         metadata.Append(ret.first);
       }
