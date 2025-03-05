@@ -62,7 +62,28 @@ class mgbench():
     def _get_random_num(self):
         return random.randint(1, 100)
 
+    def folder(self, file_path):
+        spl = file_path.split("/")
+        if len(spl) > 1:
+            spl = spl[:-1]
+        return "/".join(spl)
+
+    def last_path_part(self, folder_path):
+        spl = folder_path.split("/")
+        return spl[len(spl)-1] != ".." and spl[len(spl)-1] != "."
+
+    def create_folder(self, folder_path):
+        fold = self.folder(folder_path)
+        if self.last_path_part(fold):
+            self.create_folder(fold)
+
+        print(os.getcwd())
+
+        if not os.path.exists(self.folder(fold)):
+            os.mkdir(fold)
+
     def write_to_file(self, file_path, write_lists):
+        self.create_folder(file_path)
         f1 = open(file_path, "w", encoding='utf-8')
         for key in write_lists:
             f1.write(str(key) + "\n")
@@ -273,10 +294,10 @@ if __name__ == "__main__":
                         default=0.1,
                         help="The delete ratio of graph operation queries")
     parser.add_argument("--dataset-path",
-                        default="../../datasets/T-mgBench/",
+                        default="../tests/datasets/T-mgBench/",
                         help="The original dataset path")
     parser.add_argument("--write-path",
-                        default="../../results/",
+                        default="../tests/results/",
                         help="The write path of results")
     args = parser.parse_args()
     parsed_args = vars(args)

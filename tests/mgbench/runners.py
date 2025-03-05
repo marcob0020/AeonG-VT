@@ -257,10 +257,11 @@ class Memgraph:
 
 
 class Client:
-    def __init__(self, client_binary, temporary_directory, memgraph_port):
+    def __init__(self, client_binary, temporary_directory, memgraph_port, output_stdout = False):
         self._client_binary = client_binary
         self._directory = temporary_directory
         self._port = memgraph_port
+        self._output_stdout = output_stdout
 
     def _get_args(self, **kwargs):
         return _convert_args_to_flags(self._client_binary, **kwargs)
@@ -282,7 +283,7 @@ class Client:
                     print("query", query)
 
         args = self._get_args(input=file_path, num_workers=num_workers,
-                              queries_json=queries_json, max_retries=10000, port=self._port)
+                              queries_json=queries_json, max_retries=10000, port=self._port, output_stdout = self._output_stdout)
         # print("args:",args)
         ret = subprocess.run(args, stdout=subprocess.PIPE, check=True)
         data = ret.stdout.decode("utf-8").strip().split("\n")

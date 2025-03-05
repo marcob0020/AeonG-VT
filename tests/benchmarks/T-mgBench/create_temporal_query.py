@@ -98,10 +98,10 @@ class mgbench():
         return "MATCH (n:User{id : " + str(vid) + "})-[e]->(r) "
 
     def _as_of(self, t):
-        return " TT AS " + str(t)
+        return " FOR TT AS OF " + str(t)
 
     def _from_to(self, t1, t2):
-        return " TT FROM " + str(t1) + " TO " + str(t2)
+        return " FOR TT FROM " + str(t1) + " TO " + str(t2)
 
     def _return_q1(self):
         return " RETURN r;"
@@ -198,7 +198,7 @@ if __name__ == "__main__":
                         default=0,
                         help="Min time of the datasets life")
     parser.add_argument("--write-path",
-                        default="../../results/",
+                        default="../tests/results/",
                         help="The write path of reults")
     parser.add_argument("--interval",
                         default=100,

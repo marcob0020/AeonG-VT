@@ -53,7 +53,10 @@ class gMark():
         return random.randint(min_t, max_t)
 
     def _as_of(self, ts):
-        return f" FOR TT AS OF {ts}"
+        return f" FOR TT AS OF  {ts}"
+
+    def _as_of(self, vt_ts):
+        return f" FOR VT AS OF  {vt_ts}"
 
     def generate_where_clause(self, node):
         num = node[-1]
@@ -62,7 +65,7 @@ class gMark():
         clause = match_clause + where_clause
         return clause
 
-    def get_all_queries(self, query_size, min, max, gmark_query_path):
+    def get_all_queries(self, query_size, tt_min, tt_max, vt_min, vt_max, gmark_query_path):
         cypher_lists = []
         TGQL_cypher_lists = []
         for index in range(query_size):
@@ -80,8 +83,9 @@ class gMark():
             if len(q_return_obj) != 0:
                 for node in q_return_obj:
                     tgql_opt_clause = tgql_opt_clause + self.generate_where_clause(node)
-            ts = self._get_random_time(min, max)
-            cypher = q_prefix + self._as_of(ts) + q_return
+            ts = self._get_random_time(tt_min, tt_max)
+            vt_ts = self._get_random_time(vt_min, vt_max)
+            cypher = q_prefix + self._as_of(ts) + self._as_of(vt_ts) + q_return
             cypher_lists.append(cypher)
             tgql_cypher = q_prefix + tgql_opt_clause + q_return
             TGQL_cypher_lists.append(tgql_cypher)
@@ -107,6 +111,12 @@ if __name__ == "__main__":
     parser.add_argument("--min-time", type=int,
                         default=0,
                         help="Min time of the datasets life")
+    parser.add_argument("--max-time-vt", type=int,
+                        default=100,
+                        help="Max valid time of data")
+    parser.add_argument("--min-time-vt", type=int,
+                        default=0,
+                        help="Min valid time of data")
     parser.add_argument("--query-size",
                         default=5,
                         help="Original gmark query sizes")
@@ -120,7 +130,7 @@ if __name__ == "__main__":
     for key, value in parsed_args.items():
         print(f"  {key}: {value}")
     gmark = gMark(size="sf1", max_op=320000, update_ratio=1, delete_ratio=0)
-    cypher_lists,TGQL_cypher_lists=gmark.get_all_queries(args.query_size, args.min_time, args.max_time, args.gmark_query_path)
+    cypher_lists,TGQL_cypher_lists=gmark.get_all_queries(args.query_size, args.min_time, args.max_time, args.min_time_vt, args.max_time_vt, args.gmark_query_path)
     gmark.write_to_file(f"{args.write_path}/temporal_query/cypher.txt",cypher_lists)
     gmark.write_to_file(f"{args.write_path}/temporal_query/TGQL_cypher.txt",TGQL_cypher_lists)
     print("=========done!========")

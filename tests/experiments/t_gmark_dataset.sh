@@ -8,7 +8,7 @@ clockg_binary=$1
 memgraph_binary=$2
 
 temp_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-base_dir="$( cd ../.. "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+base_dir="$( cd ../..  && pwd )"
 echo $base_dir
 build_dir="${base_dir}/build"
 test_dir="${base_dir}/tests"

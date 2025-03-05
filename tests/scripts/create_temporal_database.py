@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 
 sys.path.append('../mgbench')
+print(sys.path)
 import helpers
 import runners
 
@@ -153,11 +154,11 @@ if __name__ == "__main__":
     # for key, value in parsed_args.items():
     #     print(f"  {key}: {value}")
 
-    # print("=========create temporal database now, it will spend some time========")
+    print("=========create temporal database now, it will spend some time========")
     aeong = get_binary(args)
     client = runners.Client(args.client_binary, args.data_directory, memgraph_port=7687)
     # create index
-    client.execute(file_path=args.index_cypher_path, num_workers=args.num_workers)
+    #client.execute(file_path=args.index_cypher_path, num_workers=args.num_workers)
     # create original database
     if args.load_tgql_flag == 1:
         if args.benchmark_type == "ldbc":

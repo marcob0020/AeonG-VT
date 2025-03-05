@@ -1,7 +1,7 @@
 #!/bin/bash
 update_num=320000 #$1 #320000
-clockg_binary=/home/hjm/vldb/clockg/build/memgraph #$2 #/home/hjm/vldb/clockg/build/memgraph
-memgraph_binary=/home/hjm/vldb/memgraph-master/build/memgraph #$3 #/home/hjm/vldb/memgraph-master/build/memgraph
+clockg_binary=../../build/memgraph #$2 #/home/hjm/vldb/clockg/build/memgraph
+memgraph_binary=../../build/memgraph #$3 #/home/hjm/vldb/memgraph-master/build/memgraph
 
 # # download T-mgBench
 echo "Prepare datasets"
@@ -14,7 +14,7 @@ index_url="https://s3.eu-west-1.amazonaws.com/deps.memgraph.io/dataset/pokec/ben
 curl -o "$mgbench_download_dir/cypher_index.cypher" "$index_url"
 echo "Download mgbench dataset completed."
 
-convert to tgql dataset
+#convert to tgql dataset
 python_script="get_mgbench_tgql_dataset.py"
 cypher_file_path="--cypher-file-path $mgbench_download_dir/cypher.cypher"
 TGQL_cypher_file_path="--TGQL-cypher-file-path $mgbench_download_dir/TGQL.cypher"
@@ -78,7 +78,7 @@ echo "=============Clock-G graph operation latency & spance==========="
 echo "graph_op_latency:$graph_op_latency"
 echo "storage_consumption:$storage_consumption"
 
-Create TGQL temporal database, get graph operation latency, and get space
+# Create TGQL temporal database, get graph operation latency, and get space
 aeong_binary="--aeong-binary $memgraph_binary"
 rm -rf $prefix_path/database/TGQL
 mkdir -p $prefix_path/database/TGQL
