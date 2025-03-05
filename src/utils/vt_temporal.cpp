@@ -8,6 +8,12 @@ namespace utils {
 
 
     VTDateTimeParameters ParseVTDateTimeParameters(const std::string_view string) {
+        if (string == "-INF") {
+            return {DateParameters{0,1,1}, LocalTimeParameters{0,0,0, 0, 0}};
+        }
+        if (string == "INF" || string == "+INF") {
+            return {DateParameters{9999,12,31}, LocalTimeParameters{23,59,59, 999, 999}};
+        }
         std::pair<DateParameters, LocalTimeParameters> parameters = utils::ParseLocalDateTimeParameters(string);
 
         return VTDateTimeParameters{parameters.first, parameters.second};
