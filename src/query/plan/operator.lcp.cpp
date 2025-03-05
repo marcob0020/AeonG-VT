@@ -3,7 +3,7 @@
 // DO NOT EDIT! Generated using LCP from
 // '/home/marcob0020/Desktop/AeonG/AeonG-VT/src/query/plan/operator.lcp'
 
-#include "/home/marcob0020/Desktop/AeonG/AeonG-VT/src/query/plan/operator.hpp"
+#include "operator.hpp"
 
 const utils::TypeInfo query::plan::LogicalOperator::kType{
     0xCF6E3316FE845113ULL, "LogicalOperator", nullptr};

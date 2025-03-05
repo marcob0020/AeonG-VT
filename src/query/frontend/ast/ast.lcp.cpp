@@ -3,7 +3,7 @@
 // DO NOT EDIT! Generated using LCP from
 // '/home/marcob0020/Desktop/AeonG/AeonG-VT/src/query/frontend/ast/ast.lcp'
 
-#include "/home/marcob0020/Desktop/AeonG/AeonG-VT/src/query/frontend/ast/ast.hpp"
+#include "ast.hpp"
 
 const utils::TypeInfo query::LabelIx::kType{0x7D41C2BCFA52D96AULL, "LabelIx",
                                             nullptr};

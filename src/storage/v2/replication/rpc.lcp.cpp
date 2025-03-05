@@ -3,7 +3,7 @@
 // DO NOT EDIT! Generated using LCP from
 // '/home/marcob0020/Desktop/AeonG/AeonG-VT/src/storage/v2/replication/rpc.lcp'
 
-#include "/home/marcob0020/Desktop/AeonG/AeonG-VT/src/storage/v2/replication/rpc.hpp"
+#include "rpc.hpp"
 
 namespace storage {
 
