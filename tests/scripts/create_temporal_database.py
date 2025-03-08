@@ -195,6 +195,7 @@ if __name__ == "__main__":
         time.sleep(5 * 60)
     if args.binary_type == "aeong":
         time.sleep(60)
+    memory = aeong.get_memory_usage()
     aeong.stop()
     print(graph_op_ret[0]['duration'] / graph_op_ret[0]['count'],
-        get_space(args.data_directory, args.binary_type) / 1024 / 1024, start_time, end_time)
+        get_space(args.data_directory, args.binary_type) / 1024 / 1024, start_time, end_time, memory)

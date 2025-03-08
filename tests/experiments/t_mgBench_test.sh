@@ -51,9 +51,11 @@ graph_op_latency=$(echo "$output" | awk '{print $1}')
 storage_consumption=$(echo "$output" | awk '{print $2}')
 start_time=$(echo "$output" | awk '{print $3}')
 end_time=$(echo "$output" | awk '{print $4}')
+memory=$(echo "$output" | awk '{print $5}')
 echo "=============AeonG graph operation latency & spance==========="
 echo "graph_op_latency:$graph_op_latency"
 echo "storage_consumption:$storage_consumption"
+echo "main memory consumption:"$memory
 
 #Create ClockG temporal database, get graph operation latency, and get space"
 aeong_binary="--aeong-binary ../../build/memgraph"

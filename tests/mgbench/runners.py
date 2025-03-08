@@ -249,6 +249,20 @@ class Memgraph:
         else:
             self._start(db_recover_on_startup=True)
 
+    def get_memory_usage(self):
+        if self._proc_mg is None:
+            return None
+        pid = self._proc_mg.pid
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "rss=", "-p", str(pid)],
+                capture_output=True, text=True, check=True
+            )
+            memory_kb = int(result.stdout.strip())  # Memory in KB
+            return memory_kb * 1024  # Convert to bytes
+        except subprocess.CalledProcessError:
+            return None  # Process does not exist
+
     def stop(self):
         ret, usage = self._cleanup()
         assert ret == 0, "The database process exited with a non-zero " \

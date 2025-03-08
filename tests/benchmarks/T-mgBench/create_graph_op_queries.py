@@ -63,27 +63,20 @@ class mgbench():
         return random.randint(1, 100)
 
     def folder(self, file_path):
-        spl = file_path.split("/")
-        if len(spl) > 1:
-            spl = spl[:-1]
-        return "/".join(spl)
-
-    def last_path_part(self, folder_path):
-        spl = folder_path.split("/")
-        return spl[len(spl)-1] != ".." and spl[len(spl)-1] != "."
+        """Returns the directory path of a given file path."""
+        return os.path.dirname(file_path)
 
     def create_folder(self, folder_path):
+        """Recursively creates the directory if it doesn't exist."""
         fold = self.folder(folder_path)
-        if self.last_path_part(fold):
-            self.create_folder(fold)
 
-        print(os.getcwd())
-
-        if not os.path.exists(self.folder(fold)):
-            os.mkdir(fold)
+        if not os.path.exists(fold):
+            os.makedirs(fold)  # Ensures parent directories are created
+            print(f"Folder created: {fold}")
 
     def write_to_file(self, file_path, write_lists):
         self.create_folder(file_path)
+        print("folder created: " + file_path)
         f1 = open(file_path, "w", encoding='utf-8')
         for key in write_lists:
             f1.write(str(key) + "\n")
@@ -126,12 +119,16 @@ class mgbench():
         update_count_path_hot = file_path + "_update_count_hot.csv"
         update_count_path_warm = file_path + "_update_count_warm.csv"
         update_count_path_cold = file_path + "_update_count_cold.csv"
+        print("update_path: " + update_path)
         if not self.exist_file(update_path):
+            print("creating")
             # write peak vertex
             left = np.uint64(1)
             right = np.uint64(self._num_vertices)
             self._update_vertices_lists = self.Zipf(1.1, left, right, self._max_update_op)
+            print("writing")
             self.write_to_file(file_path=update_path, write_lists=self._update_vertices_lists)
+            print("written")
             # write vertex count
             data = pd.value_counts(self._update_vertices_lists)
             data.to_csv(update_count_path, header=False)
@@ -146,6 +143,7 @@ class mgbench():
             data_quantile2.to_csv(update_count_path_warm, header=False)
             data_quantile3.to_csv(update_count_path_cold, header=False)
         else:
+            print("reading")
             self._update_vertices_lists = self.read_from_file(update_path)
 
         # create vertex
