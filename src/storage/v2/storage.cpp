@@ -438,6 +438,14 @@ Storage::Storage(Config config)
       uuid_(utils::GenerateUUID()),
       epoch_id_(utils::GenerateUUID()),
       global_locker_(file_retainer_.AddLocker()) {
+
+  std::cout << "\nVertex: " << sizeof(Vertex)
+            << "\nEdge: " << sizeof(Edge)
+            << "\nDelta: " << sizeof(Delta)
+            << "\nVtStore: " << sizeof(VtStore)
+            << "\nVtStore*: "<< sizeof(VtStore*)
+            << "\nPropertyValue: " << sizeof(PropertyValue)
+            << "\nutils::timeline:" << sizeof(utils::timeline) << std::endl;
         //hjm begin
       // saved_history_deltas_.init(config_.durability.storage_directory/"history_deltas");
          saved_history_deltas_.emplace(config_.durability.storage_directory/"history_deltas",config_.items.realTimeFlag);
@@ -837,10 +845,10 @@ Result<std::vector<EdgeAccessor>> Storage::Accessor::Edges(std::vector<std::tupl
     return std::move(ret);
 }
 
-utils::timeline Storage::Accessor::VertexVt(const Vertex* vertex, const utils::TimeSpan& vt) {
+utils::timeline Storage::Accessor::VertexVt(Vertex* vertex, const utils::TimeSpan& vt) {
    utils::timeline coverage(vt);
 
-  coverage = vertex->vt_store.GetObjectValidity(vt);
+  coverage = vertex->get_vt_store().GetObjectValidity(vt);
   if (!coverage.has_any()) {
     coverage.add(utils::TimeSpan());
   }
@@ -864,17 +872,17 @@ utils::timeline Storage::Accessor::VertexVt(const Vertex* vertex, const utils::T
   return coverage;
 }
 
-utils::timeline Storage::Accessor::EdgeVt(const Vertex* from_vertex, EdgeDeltasTypes type, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TimeSpan& vt) {
+utils::timeline Storage::Accessor::EdgeVt(Vertex* from_vertex, EdgeDeltasTypes type, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TimeSpan& vt) {
   utils::timeline coverage(vt);
   switch (type) {
     case INGOING:
-      coverage = from_vertex->vt_store.GetIngoingEdge(edge_, vt);
+      coverage = from_vertex->get_vt_store().GetIngoingEdge(edge_, vt);
     break;
     case OUTGOING:
-      coverage = from_vertex->vt_store.GetOutgoingEdge(edge_, vt);
+      coverage = from_vertex->get_vt_store().GetOutgoingEdge(edge_, vt);
     break;
     case OBJECT:
-      coverage = std::get<2>(edge_).ptr->vt_store.GetObjectValidity(vt);
+      coverage = std::get<2>(edge_).ptr->get_vt_store().GetObjectValidity(vt);
     break;
   }
 
@@ -952,7 +960,7 @@ VertexAccessor Storage::Accessor::CreateVertex() {
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
   delta->prev.Set(&*it);
-  it->vt_store.CreateObject(utils::TimeSpan());
+  it->get_vt_store().CreateObject(utils::TimeSpan());
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
@@ -968,7 +976,7 @@ VertexAccessor Storage::Accessor::CreateVertex(const utils::TimeSpan& vt) {
   const auto vertex = (&*it);
 
   delta->prev.Set(vertex);
-  it->vt_store.CreateObject(vt);
+  it->get_vt_store().CreateObject(vt);
 
   TemporalFlagSet(vertex, vt);
 
@@ -991,7 +999,7 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid) {
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
   delta->prev.Set(&*it);
-  it->vt_store.CreateObject(utils::TimeSpan());
+  it->get_vt_store().CreateObject(utils::TimeSpan());
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
@@ -1014,7 +1022,7 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid, const utils::Ti
   const auto vertex = ((&*it));
 
   delta->prev.Set(vertex);
-  it->vt_store.CreateObject(vt);
+  it->get_vt_store().CreateObject(vt);
 
   TemporalFlagSet(vertex, vt);
 
@@ -1598,7 +1606,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     //hjm end
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
-    it->vt_store.CreateObject(utils::TimeSpan());
+    it->get_vt_store().CreateObject(utils::TimeSpan());
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
@@ -1733,7 +1741,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     //hjm end
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
-    it->vt_store.CreateObject(vt);
+    it->get_vt_store().CreateObject(vt);
 
     TemporalFlagSet(&*it, vt);
   }
@@ -1887,7 +1895,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     //hjm end
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
-    it->vt_store.CreateObject(utils::TimeSpan());
+    it->get_vt_store().CreateObject(utils::TimeSpan());
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
@@ -2035,7 +2043,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
 
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
-    it->vt_store.CreateObject(vt);
+    it->get_vt_store().CreateObject(vt);
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, vt, vt, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
@@ -3461,7 +3469,7 @@ void Storage::CollectGarbage() {
 
         auto edge = edge_acc.find(gid);
         if (edge != edge_acc.end()) {
-          auto parts = edge->vt_store.SerializeToStrings();
+          auto parts = edge->get_vt_store().SerializeToStrings();
           for (const auto& [key, value]: parts) {
             data3[key] = value;
           }
@@ -3505,7 +3513,7 @@ void Storage::CollectGarbage() {
 
         auto vertex = vertex_acc.find(gid);
         if (vertex != vertex_acc.end()) {
-          auto parts = vertex->vt_store.SerializeToStrings();
+          auto parts = vertex->get_vt_store().SerializeToStrings();
           for (const auto& [key, value]: parts) {
             data3[key] = value;
           }

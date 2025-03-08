@@ -290,31 +290,34 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
             auto next_marker = snapshot.ReadMarker();
             if (!next_marker) throw RecoveryFailure("Invalid snapshot data!");
 
-            VtStore& vt_store = it->vt_store;
-            while (*next_marker != Marker::VTSTORE_END) {
-              switch (*next_marker) {
-                case Marker::VTSTORE_OBJECT_VALIDITY: {
-                  vt_store.DeserializeIntoValidity(&snapshot);
-                  break;
+            VtStore* vt_store_ptr = it->vt_store;
+            if (vt_store_ptr != nullptr) {
+              VtStore& vt_store = *vt_store_ptr;
+              while (*next_marker != Marker::VTSTORE_END) {
+                switch (*next_marker) {
+                  case Marker::VTSTORE_OBJECT_VALIDITY: {
+                    vt_store.DeserializeIntoValidity(&snapshot);
+                    break;
+                  }
+                  case Marker::VTSTORE_PROPERTY: {
+                    auto property_id = snapshot.ReadUint();
+                    if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
+                    vt_store.DeserializeIntoProperty(&snapshot, get_property_from_id(*property_id));
+                    break;
+                  }
+                  case Marker::VTSTORE_END: {
+                    break;
+                  }
+                  default:
+                    throw RecoveryFailure("Invalid snapshot data!");
                 }
-                case Marker::VTSTORE_PROPERTY: {
-                  auto property_id = snapshot.ReadUint();
-                  if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
-                  vt_store.DeserializeIntoProperty(&snapshot, get_property_from_id(*property_id));
-                  break;
-                }
-                case Marker::VTSTORE_END: {
-                  break;
-                }
-                default:
-                  throw RecoveryFailure("Invalid snapshot data!");
-              }
 
-              if (*next_marker != Marker::VTSTORE_END) {
-                next_marker = snapshot.ReadMarker();
+                if (*next_marker != Marker::VTSTORE_END) {
+                  next_marker = snapshot.ReadMarker();
+                }
               }
-            }
-
+            }else if (*next_marker != Marker::VTSTORE_END)
+              throw RecoveryFailure("Invalid snapshot data!");
 
           }
 
@@ -437,52 +440,57 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
         auto next_marker = snapshot.ReadMarker();
         if (!next_marker) throw RecoveryFailure("Invalid snapshot data!");
 
-        VtStore& vt_store = it->vt_store;
-        while (*next_marker != Marker::VTSTORE_END) {
-          switch (*next_marker) {
-            case Marker::VTSTORE_OBJECT_VALIDITY: {
-              vt_store.DeserializeIntoValidity(&snapshot);
-              break;
-            }
-            case Marker::VTSTORE_IN_EDGE: {
-              auto edgetype_id = snapshot.ReadUint();
-              if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
-              auto vertexto_gid = snapshot.ReadUint();
-              if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
-              auto edge_gid = snapshot.ReadUint();
-              if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
+        VtStore* vt_store_ptr = it->vt_store;
+        if (vt_store_ptr != nullptr) {
+          VtStore& vt_store = *vt_store_ptr;
+          while (*next_marker != Marker::VTSTORE_END) {
+            switch (*next_marker) {
+              case Marker::VTSTORE_OBJECT_VALIDITY: {
+                vt_store.DeserializeIntoValidity(&snapshot);
+                break;
+              }
+              case Marker::VTSTORE_IN_EDGE: {
+                auto edgetype_id = snapshot.ReadUint();
+                if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
+                auto vertexto_gid = snapshot.ReadUint();
+                if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
+                auto edge_gid = snapshot.ReadUint();
+                if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
 
-              vt_store.DeserializeIntoInEdges(&snapshot, std::nullopt);
-              break;
-            }
-            case Marker::VTSTORE_OUT_EDGE: {
-              auto edgetype_id = snapshot.ReadUint();
-              if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
-              auto vertexto_gid = snapshot.ReadUint();
-              if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
-              auto edge_gid = snapshot.ReadUint();
-              if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
+                vt_store.DeserializeIntoInEdges(&snapshot, std::nullopt);
+                break;
+              }
+              case Marker::VTSTORE_OUT_EDGE: {
+                auto edgetype_id = snapshot.ReadUint();
+                if (!edgetype_id) throw RecoveryFailure("Invalid snapshot data!");
+                auto vertexto_gid = snapshot.ReadUint();
+                if (!vertexto_gid) throw RecoveryFailure("Invalid snapshot data!");
+                auto edge_gid = snapshot.ReadUint();
+                if (!edge_gid) throw RecoveryFailure("Invalid snapshot data!");
 
-              vt_store.DeserializeIntoOutEdges(&snapshot, std::nullopt);
-              break;
+                vt_store.DeserializeIntoOutEdges(&snapshot, std::nullopt);
+                break;
+              }
+              case Marker::VTSTORE_PROPERTY: {
+                auto property_id = snapshot.ReadUint();
+                if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
+                vt_store.DeserializeIntoProperty(&snapshot, get_property_from_id(*property_id));
+                break;
+              }
+              case Marker::VTSTORE_END: {
+                break;
+              }
+              default:
+                throw RecoveryFailure("Invalid snapshot data!");
             }
-            case Marker::VTSTORE_PROPERTY: {
-              auto property_id = snapshot.ReadUint();
-              if (!property_id) throw RecoveryFailure("Invalid snapshot data!");
-              vt_store.DeserializeIntoProperty(&snapshot, get_property_from_id(*property_id));
-              break;
+
+            if (*next_marker != Marker::VTSTORE_END) {
+              next_marker = snapshot.ReadMarker();
             }
-            case Marker::VTSTORE_END: {
-              break;
-            }
-            default:
-              throw RecoveryFailure("Invalid snapshot data!");
           }
+        }else if (*next_marker != Marker::VTSTORE_END)
+          throw RecoveryFailure("Invalid snapshot data!");
 
-          if (*next_marker != Marker::VTSTORE_END) {
-            next_marker = snapshot.ReadMarker();
-          }
-        }
 
       }
     }
@@ -610,8 +618,11 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
         auto next_marker = snapshot.ReadMarker();
         if (!next_marker) throw RecoveryFailure("Invalid snapshot data!");
 
-        VtStore& vt_store = vertex.vt_store;
-        while (*next_marker != Marker::VTSTORE_END) {
+        VtStore* vt_store_ptr = vertex.vt_store;
+        if (vt_store_ptr != nullptr) {
+          VtStore& vt_store = *vt_store_ptr;
+
+          while (*next_marker != Marker::VTSTORE_END) {
           switch (*next_marker) {
             case Marker::VTSTORE_OBJECT_VALIDITY: {
               //Reimport validity(in theory, low time-cost operation)
@@ -688,6 +699,10 @@ RecoveredSnapshot LoadSnapshot(const std::filesystem::path &path, utils::SkipLis
             next_marker = snapshot.ReadMarker();
           }
         }
+        }else if (*next_marker != Marker::VTSTORE_END) {
+          throw RecoveryFailure("Invalid snapshot data!");
+        }
+
 
 
       }
@@ -926,7 +941,7 @@ void CreateSnapshot(Transaction *transaction, const std::filesystem::path &snaps
           }
         });
       }else {
-        utils::timeline validity = edge.vt_store.GetObjectValidity(utils::TimeSpan());
+        utils::timeline validity = edge.get_vt_store().GetObjectValidity(utils::TimeSpan());
         ApplyDeltasForRead(transaction, delta, View::OLD, utils::TemporalFilter(), [&validity](const Delta &delta, utils::TimeSpan vt_intersect) {
           switch (delta.action) {
             case Delta::Action::ADD_LABEL:

@@ -35,7 +35,7 @@ bool TemporalFlagSet(Edge* edge_, utils::TimeSpan span, int n_deltas) {
 utils::valued_timeline<storage::PropertyValue> EdgeAccessor::PropertyTimeline(storage::PropertyId property_id, const utils::TimeSpan &vt) const {
   utils::valued_timeline<storage::PropertyValue> coverage(vt);
 
-  coverage = edge_.ptr->vt_store.GetProperty(property_id, vt);
+  coverage = edge_.ptr->get_vt_store().GetProperty(property_id, vt);
   if (!coverage.has_any()) {
     coverage.add(utils::TimeSpan(), edge_.ptr->properties.GetProperty(property_id));
   }
@@ -310,7 +310,7 @@ Result<storage::PropertyValue> EdgeAccessor::SetProperty(PropertyId property, co
   }
 
   if (TemporalFlagSet(edge_.ptr, vt, n_deltas))
-    edge_.ptr->vt_store.InitProperty(property, edge_.ptr->properties.GetProperty(property));
+    edge_.ptr->get_vt_store().InitProperty(property, edge_.ptr->properties.GetProperty(property));
 
   edge_.ptr->properties.SetProperty(property, value);
   return std::move(current_value);

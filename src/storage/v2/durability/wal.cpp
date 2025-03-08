@@ -699,7 +699,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
           }
 
           if (vertex->has_vt) {
-            vertex->vt_store.CreateObject(delta.vt);
+            vertex->get_vt_store().CreateObject(delta.vt);
           }
 
 
@@ -719,8 +719,8 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               vertex->has_vt ++;
 
             if (vertex->has_vt) {
-              vertex->vt_store.DeleteObject(delta.vt);
-              if (!vertex->vt_store.IsValid()) {
+              vertex->get_vt_store().DeleteObject(delta.vt);
+              if (!vertex->get_vt_store().IsValid()) {
                 if (!vertex_acc.remove(delta.vertex_create_delete.gid))
                   throw RecoveryFailure("The vertex must be removed here!");
               }
@@ -753,14 +753,14 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
 
             if (vertex->has_vt) {
               if (delta.type == WalDeltaData::Type::VERTEX_ADD_LABEL) {
-                vertex->vt_store.SetLabel(*it, delta.vt);
+                vertex->get_vt_store().SetLabel(*it, delta.vt);
 
                 if (it == vertex->labels.end())
                   vertex->labels.push_back(label_id);
               } else {
-                vertex->vt_store.DeleteLabel(*it, delta.vt);
+                vertex->get_vt_store().DeleteLabel(*it, delta.vt);
 
-                if (!vertex->vt_store.HasLabel(*it)) {
+                if (!vertex->get_vt_store().HasLabel(*it)) {
                   if (it == vertex->labels.end()) throw RecoveryFailure("The vertex doesn't have the label!");
                   std::swap(*it, vertex->labels.back());
                   vertex->labels.pop_back();
@@ -786,7 +786,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               vertex->has_vt++;
 
             if (vertex->has_vt) {
-              vertex->vt_store.SetProperty(property_id, property_value, delta.vt);
+              vertex->get_vt_store().SetProperty(property_id, property_value, delta.vt);
             }
 
           }
@@ -816,7 +816,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               if (edge->has_vt >= 0)
                 edge->has_vt++;
               if (edge->has_vt) {
-                edge->vt_store.CreateObject(delta.vt);
+                edge->get_vt_store().CreateObject(delta.vt);
               }
             }
           }
@@ -831,7 +831,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               if (from_vertex->has_vt >= 0)
                 from_vertex->has_vt++;
               if (from_vertex->has_vt) {
-                  from_vertex->vt_store.SetOutgoingEdge(link, delta.vt);
+                  from_vertex->get_vt_store().SetOutgoingEdge(link, delta.vt);
               }
             }
           }
@@ -846,7 +846,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               if (to_vertex->has_vt >= 0)
                 to_vertex->has_vt++;
               if (to_vertex->has_vt) {
-                to_vertex->vt_store.SetIngoingEdge(link, delta.vt);
+                to_vertex->get_vt_store().SetIngoingEdge(link, delta.vt);
               }
             }
           }
@@ -882,7 +882,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               if (edge->has_vt >= 0)
                 edge->has_vt++;
               if (edge->has_vt) {
-                edge->vt_store.DeleteObject(delta.vt);
+                edge->get_vt_store().DeleteObject(delta.vt);
               }
             }
           }
@@ -894,8 +894,8 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               if (from_vertex->has_vt >= 0)
                 from_vertex->has_vt++;
               if (from_vertex->has_vt) {
-                from_vertex->vt_store.DeleteOutgoingEdge(link,delta.vt);
-                if (!from_vertex->vt_store.HasOutgoingEdge(link)) {
+                from_vertex->get_vt_store().DeleteOutgoingEdge(link,delta.vt);
+                if (!from_vertex->get_vt_store().HasOutgoingEdge(link)) {
                   std::swap(*it, from_vertex->out_edges.back());
                   from_vertex->out_edges.pop_back();
                   removed_now = true;
@@ -915,8 +915,8 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               if (to_vertex->has_vt >= 0)
                 to_vertex->has_vt++;
               if (to_vertex->has_vt) {
-                to_vertex->vt_store.DeleteIngoingEdge(link,delta.vt);
-                if (!to_vertex->vt_store.HasIngoingEdge(link)) {
+                to_vertex->get_vt_store().DeleteIngoingEdge(link,delta.vt);
+                if (!to_vertex->get_vt_store().HasIngoingEdge(link)) {
                   std::swap(*it, to_vertex->in_edges.back());
                   to_vertex->in_edges.pop_back();
                   removed_now = true;
@@ -935,7 +935,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
                 throw RecoveryFailure("The edge must be removed here!");
               removed_now = true;
             } else {
-              if (!edge_ref.ptr->vt_store.IsValid()) {
+              if (!edge_ref.ptr->get_vt_store().IsValid()) {
                 if (!edge_acc.remove(edge_gid))
                   throw RecoveryFailure("The edge must be removed here!");
                 removed_now = true;
@@ -965,7 +965,7 @@ RecoveryInfo LoadWal(const std::filesystem::path &path, RecoveredIndicesAndConst
               edge->has_vt++;
 
             if (edge->has_vt) {
-              edge->vt_store.SetProperty(property_id, property_value, delta.vt);
+              edge->get_vt_store().SetProperty(property_id, property_value, delta.vt);
             }
 
           }

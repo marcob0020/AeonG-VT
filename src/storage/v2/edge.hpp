@@ -25,7 +25,16 @@ namespace storage {
 struct Vertex;
 
 struct Edge {
-  Edge(Gid gid, Delta *delta) : gid(gid), deleted(false), delta(delta) {
+  Edge(const Edge&) = delete;
+  Edge(Edge&& other) {
+    gid = other.gid;
+    delta = other.delta;
+    transaction_st=0;
+    // tt_te=(uint64_t)std::numeric_limits<int64_t>::max();
+    num=0;
+  }
+
+  Edge(Gid gid, Delta *delta) : gid(gid), vt_store(nullptr), deleted(false), delta(delta) {
     transaction_st=0;
     // tt_te=(uint64_t)std::numeric_limits<int64_t>::max();
     num=0;
@@ -33,16 +42,30 @@ struct Edge {
               "Edge must be created with an initial DELETE_OBJECT delta!");
   }
 
-  Edge(Gid gid, Delta *delta,uint64_t transaction_st,Gid from_gid,Gid to_gid) : gid(gid),deleted(false),transaction_st(transaction_st),from_gid(from_gid),to_gid(to_gid),delta(delta){
+  Edge(Gid gid, Delta *delta,uint64_t transaction_st,Gid from_gid,Gid to_gid) : gid(gid), vt_store(nullptr), deleted(false),transaction_st(transaction_st),from_gid(from_gid),to_gid(to_gid),delta(delta){
     transaction_st=0;
     num=0;
     // tt_te=(uint64_t)std::numeric_limits<int64_t>::max();
   }
 
+  ~Edge() {
+    if (vt_store != nullptr) {
+      delete vt_store;
+      vt_store = nullptr;
+    }
+  }
+
+  storage::VtStore& get_vt_store() {
+    if (vt_store == nullptr) {
+      vt_store = new VtStore();
+    }
+    return *vt_store;
+  }
+
   Gid gid;
 
   PropertyStore properties;
-  VtStore vt_store;
+  VtStore* vt_store;
 
   mutable utils::SpinLock lock;
   bool deleted;

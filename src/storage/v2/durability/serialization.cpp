@@ -139,8 +139,14 @@ void Encoder::WritePropertyValue(const PropertyValue &value) {
   }
 }
 
-void Encoder::WriteVtStore(const VtStore &value) {
-  value.SerializeToWriter(this);
+void Encoder::WriteVtStore(const VtStore* value) {
+  if (value != nullptr) {
+    value->SerializeToWriter(this);
+  }else {
+    this->WriteMarker(durability::Marker::SECTION_VTSTORE);
+    this->WriteMarker(durability::Marker::VTSTORE_END);
+  }
+
 }
 
 uint64_t Encoder::GetPosition() { return file_.GetPosition(); }

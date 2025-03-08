@@ -563,8 +563,8 @@ Result<bool> VertexAccessor::HasLabel(LabelId label, View view, const utils::Tem
     has_label = std::find(vertex_->labels.begin(), vertex_->labels.end(), label) != vertex_->labels.end();
     delta = vertex_->delta;
   }
-  utils::timeline vt_range_label = vertex_->vt_store.GetLabel(label,  vt.get_span());
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+  utils::timeline vt_range_label = vertex_->get_vt_store().GetLabel(label,vt.get_span());
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt.get_span());
 
   if (!vt_range_label.has_any() && has_label) {
     vt_range_label.add(utils::TimeSpan());
@@ -674,10 +674,10 @@ Result<std::vector<LabelId>> VertexAccessor::Labels(View view, const utils::Temp
   }
 
   std::map<LabelId, utils::timeline> vt_labels;
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt.get_span());
 
-  for (auto& label : vertex_->vt_store.Labels()) {
-    vt_labels.insert({label, vertex_->vt_store.GetLabel(label, vt.get_span())});
+  for (auto& label : vertex_->get_vt_store().Labels()) {
+    vt_labels.insert({label, vertex_->get_vt_store().GetLabel(label, vt.get_span())});
   }
   for (auto& label : vertex_->labels) {
     if (vt_labels.find(label) == vt_labels.end()) {
@@ -909,7 +909,7 @@ Result<PropertyValue> VertexAccessor::SetProperty(PropertyId property, const Pro
   n_deltas += ExtendValidity(vt, ts);
 
   if (TemporalFlagSet(vertex_, vt, n_deltas))
-    vertex_->vt_store.InitProperty(property, vertex_->properties.GetProperty(property));
+    vertex_->get_vt_store().InitProperty(property, vertex_->properties.GetProperty(property));
 
   vertex_->properties.SetProperty(property, value);
   vertex_->num+=1;
@@ -1183,7 +1183,7 @@ Result<PropertyValue> VertexAccessor::GetProperty(PropertyId property, View view
   bool deleted = false;
   PropertyValue value;
   utils::valued_timeline<PropertyValue> res = PropertyTimeline(property, vt.get_span());
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt.get_span());
 
   Delta *delta = nullptr;
   {
@@ -1294,12 +1294,12 @@ Result<std::map<PropertyId, PropertyValue>> VertexAccessor::Properties(View view
 
   std::map<PropertyId, utils::valued_timeline<PropertyValue>> properties;
 
-  for (auto& property : vertex_->vt_store.Properties()) {
+  for (auto& property : vertex_->get_vt_store().Properties()) {
     utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt.get_span());
 
     properties.emplace(property, vt_range_prop);
   }
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt.get_span());
 
   ApplyDeltasForRead(transaction_, delta, view, vt, [&vt_range_obj, &deleted, &properties, vt](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
@@ -1363,7 +1363,7 @@ std::map<PropertyId, utils::valued_timeline<PropertyValue>> VertexAccessor::AllP
 
   std::map<PropertyId, utils::valued_timeline<PropertyValue>> properties;
 
-  for (auto& property : vertex_->vt_store.Properties()) {
+  for (auto& property : vertex_->get_vt_store().Properties()) {
     utils::valued_timeline<PropertyValue> vt_range_prop = PropertyTimeline(property, vt.get_span());
 
     properties.emplace(property, vt_range_prop);
@@ -1376,7 +1376,7 @@ std::map<PropertyId, utils::valued_timeline<PropertyValue>> VertexAccessor::AllP
     }
   }
 
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt.get_span());
 
   ApplyDeltasForRead(transaction_, delta, view, vt, [&vt_range_obj, &deleted, &properties, vt](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
@@ -1436,7 +1436,7 @@ Result<utils::timeline> VertexAccessor::AllObjectTimeline(View view, const utils
     delta = vertex_->delta;
   }
 
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt.get_span());
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt.get_span());
 
   ApplyDeltasForRead(transaction_, delta, view, vt, [&vt_range_obj](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {
@@ -1869,7 +1869,7 @@ Result<size_t> VertexAccessor::OutDegree(View view) const {
 utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(storage::PropertyId property_id,  const utils::TimeSpan &vt) const {
   utils::valued_timeline<storage::PropertyValue> coverage(vt);
 
-  coverage = vertex_->vt_store.GetProperty(property_id, vt);
+  coverage = vertex_->get_vt_store().GetProperty(property_id, vt);
   if (!coverage.has_any()) {
     coverage.add(vt, vertex_->properties.GetProperty(property_id));
   }
@@ -1895,7 +1895,7 @@ utils::valued_timeline<storage::PropertyValue> VertexAccessor::PropertyTimeline(
 utils::timeline VertexAccessor::LabelTimeline(storage::LabelId label_id, const utils::TimeSpan &vt) const {
   utils::timeline coverage(vt);
 
-  coverage = vertex_->vt_store.GetLabel(label_id, vt);
+  coverage = vertex_->get_vt_store().GetLabel(label_id, vt);
   if (!coverage.has_any() && std::find(vertex_->labels.begin(), vertex_->labels.end(), label_id) != vertex_->labels.end()) {
     coverage.add(vt);
   }
@@ -1929,7 +1929,7 @@ int VertexAccessor::ExtendValidity(const utils::TimeSpan& vt, uint64_t ts) {
   tf.second = vt.second;
   tf.type = utils::TemporalQueryType::FROM_TO;
 
-  utils::timeline vt_range_obj = vertex_->vt_store.GetObjectValidity(vt);
+  utils::timeline vt_range_obj = vertex_->get_vt_store().GetObjectValidity(vt);
 
   ApplyDeltasForRead(transaction_, vertex_->delta, View::NEW, tf, [&vt_range_obj](const Delta &delta, utils::TimeSpan vt_intersection) {
     switch (delta.action) {

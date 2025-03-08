@@ -446,8 +446,8 @@ class Storage final {
 
     using EdgeDeltasTypes = enum {INGOING, OUTGOING, OBJECT};
 
-    utils::timeline EdgeVt(const Vertex* from_vertex, EdgeDeltasTypes type, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TimeSpan& vt);
-    utils::timeline VertexVt(const Vertex* vertex, const utils::TimeSpan& vt);
+    utils::timeline EdgeVt(Vertex* from_vertex, EdgeDeltasTypes type, std::tuple<EdgeTypeId, Vertex *, EdgeRef> edge_, const utils::TimeSpan& vt);
+    utils::timeline VertexVt(Vertex* vertex, const utils::TimeSpan& vt);
 
     Storage *storage_;
     std::shared_lock<utils::RWLock> storage_guard_;
