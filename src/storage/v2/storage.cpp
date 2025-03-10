@@ -960,7 +960,7 @@ VertexAccessor Storage::Accessor::CreateVertex() {
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
   delta->prev.Set(&*it);
-  it->get_vt_store().CreateObject(utils::TimeSpan());
+  //it->get_vt_store().CreateObject(utils::TimeSpan());
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
@@ -999,7 +999,7 @@ VertexAccessor Storage::Accessor::CreateVertex(storage::Gid gid) {
   MG_ASSERT(inserted, "The vertex must be inserted here!");
   MG_ASSERT(it != acc.end(), "Invalid Vertex accessor!");
   delta->prev.Set(&*it);
-  it->get_vt_store().CreateObject(utils::TimeSpan());
+  //it->get_vt_store().CreateObject(utils::TimeSpan());
   return VertexAccessor(&*it, &transaction_, &storage_->indices_, &storage_->constraints_, config_);
 }
 
@@ -1606,7 +1606,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     //hjm end
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
-    it->get_vt_store().CreateObject(utils::TimeSpan());
+    //it->get_vt_store().CreateObject(utils::TimeSpan());
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
@@ -1895,7 +1895,7 @@ Result<EdgeAccessor> Storage::Accessor::CreateEdge(VertexAccessor *from, VertexA
     //hjm end
     edge = EdgeRef(&*it);
     delta->prev.Set(&*it);
-    it->get_vt_store().CreateObject(utils::TimeSpan());
+    //it->get_vt_store().CreateObject(utils::TimeSpan());
   }
 
   auto delta=CreateAndLinkDelta(&transaction_, from_vertex, Delta::RemoveOutEdgeTag(), edge_type, to_vertex, edge);
