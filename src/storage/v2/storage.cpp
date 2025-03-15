@@ -3672,11 +3672,13 @@ void Storage::CollectGarbage() {
             break;
           }
           case PreviousPtr::Type::DELTA: {
+            bool breakBefore = false;
             if (prev.delta->timestamp->load(std::memory_order_acquire) == commit_timestamp) {
               // The delta that is newer than this one is also a delta from this
               // transaction. We skip the current delta and will remove it as a
               // part of the suffix later.
-              break;
+
+              breakBefore = true;
             }
             Vertex* vertex = nullptr;
             Edge* edge = nullptr;
@@ -3691,12 +3693,12 @@ void Storage::CollectGarbage() {
               switch (parent.type) {
                 case PreviousPtr::Type::VERTEX:{
                   guard = std::unique_lock<utils::SpinLock>(parent.vertex->lock);
-                  vertex = prev.vertex;
+                  vertex = parent.vertex;
                   break;
                 }
                 case PreviousPtr::Type::EDGE:{
                   guard = std::unique_lock<utils::SpinLock>(parent.edge->lock);
-                  edge = prev.edge;
+                  edge = parent.edge;
                   break;
                 }
                 case PreviousPtr::Type::DELTA:
@@ -3709,8 +3711,6 @@ void Storage::CollectGarbage() {
               // chain.
               continue;
             }
-            Delta *prev_delta = prev.delta;
-            prev_delta->next.store(nullptr, std::memory_order_release);
 
             if (vertex != nullptr)
               if (vertex->has_vt)
@@ -3718,6 +3718,14 @@ void Storage::CollectGarbage() {
             if (edge != nullptr)
               if (edge->has_vt)
                 EncodeIntoVtStore(&delta,edge);
+
+            if (breakBefore)
+              break;
+
+            Delta *prev_delta = prev.delta;
+            prev_delta->next.store(nullptr, std::memory_order_release);
+
+
 
             break;
           }
